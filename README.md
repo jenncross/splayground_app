@@ -1,1 +1,0 @@
-# splayground_app
