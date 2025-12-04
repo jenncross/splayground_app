@@ -480,7 +480,7 @@ class App {
             state.showCommandPalette,
             canSend,
             () => setState({ showCommandPalette: true }),
-            (command) => setState({ currentMessage: command.label }),
+            (command) => setState({ currentMessage: command.id }),
             () => setState({ currentMessage: "" }),
             () => this.handleSendMessage(),
             state.flashMessageBox,

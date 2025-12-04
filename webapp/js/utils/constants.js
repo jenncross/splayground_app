@@ -30,7 +30,27 @@ export const COMMANDS = [
     { id: "Shake", label: "Shake", bgColor: "#d4a574", icon: "zap", textColor: "white" },
     { id: "Hot_cold", label: "Hot/Cold", bgColor: "#b084cc", icon: "thermometer", textColor: "white" },
     { id: "Jump", label: "Jump", bgColor: "#658ea9", icon: "arrow-up", textColor: "white" },
+    { id: "Clap", label: "Clap", bgColor: "#c97d8c", icon: "hand", textColor: "white" },
     { id: "Rainbow", label: "Rainbow", bgColor: "#d7a449", icon: "rainbow", textColor: "white" },
     { id: "Off", label: "Off", bgColor: "#e98973", icon: "power-off", textColor: "white" },
 ];
+
+/**
+ * Get command label from command ID
+ * @param {string} commandId - The command ID (e.g., "Hot_cold")
+ * @returns {string} - The display label (e.g., "Hot/Cold")
+ */
+export function getCommandLabel(commandId) {
+    const command = COMMANDS.find(cmd => cmd.id === commandId);
+    return command ? command.label : commandId;
+}
+
+/**
+ * Get command by ID
+ * @param {string} commandId - The command ID
+ * @returns {object|null} - The command object or null if not found
+ */
+export function getCommandById(commandId) {
+    return COMMANDS.find(cmd => cmd.id === commandId) || null;
+}
 

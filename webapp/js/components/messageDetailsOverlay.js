@@ -4,6 +4,7 @@
 
 import { getCommandIcon, getDeviceIcon } from './icons.js';
 import { getRelativeTime, getDeviceType } from '../utils/helpers.js';
+import { getCommandLabel } from '../utils/constants.js';
 
 export function createMessageDetailsOverlay(message, nicknames, onClose, onResend) {
   const overlay = document.createElement('div');
@@ -49,9 +50,16 @@ export function createMessageDetailsOverlay(message, nicknames, onClose, onResen
     </div>
   `;
   
-  // Add command icon
+  // Add command icon - convert ID to label for icon lookup
+  const commandLabel = getCommandLabel(message.command);
   const commandSection = overlay.querySelector('#commandSection');
-  commandSection.insertBefore(getCommandIcon(message.command, 'small'), commandSection.firstChild);
+  commandSection.insertBefore(getCommandIcon(commandLabel, 'small'), commandSection.firstChild);
+  
+  // Update displayed command text to show label
+  const commandText = commandSection.querySelector('span');
+  if (commandText) {
+    commandText.textContent = commandLabel;
+  }
   
   // Add recipients
   const recipientsList = overlay.querySelector('#recipientsList');

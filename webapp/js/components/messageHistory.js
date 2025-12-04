@@ -4,6 +4,7 @@
 
 import { getCommandIcon } from './icons.js';
 import { getRelativeTime, countDevicesByType } from '../utils/helpers.js';
+import { getCommandLabel } from '../utils/constants.js';
 
 export function createMessageHistory(messages, onMessageClick) {
   const container = document.createElement('div');
@@ -22,7 +23,9 @@ export function createMessageHistory(messages, onMessageClick) {
     bubble.className = 'bg-gray-200 text-gray-900 rounded-2xl rounded-br-sm p-3 ml-auto max-w-[85%] cursor-pointer message-bubble flex items-start gap-2';
     bubble.onclick = () => onMessageClick(message);
     
-    const icon = getCommandIcon(message.command, 'small');
+    // Convert command ID to label for display and icon lookup
+    const commandLabel = getCommandLabel(message.command);
+    const icon = getCommandIcon(commandLabel, 'small');
     // Append icon first
     if (icon && icon instanceof Node) {
       bubble.appendChild(icon);
@@ -34,7 +37,7 @@ export function createMessageHistory(messages, onMessageClick) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'flex-1 min-w-0';
     contentDiv.innerHTML = `
-        <div class="font-medium mb-1">${message.command}</div>
+        <div class="font-medium mb-1">${commandLabel}</div>
         <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-1">
             ${moduleCount > 0 ? `<div class="flex items-center gap-0.5"><div class="w-4 h-4 rounded-full bg-gray-500 flex items-center justify-center"><i data-lucide="smartphone" class="w-2.5 h-2.5 text-white"></i></div><span class="text-xs">×${moduleCount}</span></div>` : ''}

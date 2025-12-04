@@ -43,7 +43,7 @@
  */
 
 import { getCommandIcon } from "./icons.js";
-import { COMMANDS } from "../utils/constants.js";
+import { COMMANDS, getCommandLabel, getCommandById } from "../utils/constants.js";
 
 export function createMessageInput(currentMessage, showPalette, canSend, onInputClick, onCommandSelect, onClearMessage, onSendMessage, flashMessageBox) {
     const container = document.createElement("div");
@@ -56,7 +56,7 @@ export function createMessageInput(currentMessage, showPalette, canSend, onInput
       }" id="messageInput">
         ${
             currentMessage
-                ? `<div id="commandIcon"></div><span class="text-gray-800 text-sm flex-1">${currentMessage}</span><button class="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center transition-colors flex-shrink-0" id="clearBtn"><i data-lucide="x" class="w-3 h-3 text-gray-600"></i></button>`
+                ? `<div id="commandIcon"></div><span class="text-gray-800 text-sm flex-1">${getCommandLabel(currentMessage)}</span><button class="w-5 h-5 rounded-full bg-gray-300 flex items-center justify-center transition-colors flex-shrink-0" id="clearBtn"><i data-lucide="x" class="w-3 h-3 text-gray-600"></i></button>`
                 : '<span class="text-gray-400 text-sm">Select a command...</span>'
         }
       </div>
@@ -75,7 +75,9 @@ export function createMessageInput(currentMessage, showPalette, canSend, onInput
     // Add command icon if message selected
     if (currentMessage) {
         const iconContainer = container.querySelector("#commandIcon");
-        const icon = getCommandIcon(currentMessage, "small");
+        // Use label for icon lookup (icons.js uses labels)
+        const commandLabel = getCommandLabel(currentMessage);
+        const icon = getCommandIcon(commandLabel, "small");
         if (icon) {
             iconContainer.appendChild(icon);
         }
