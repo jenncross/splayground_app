@@ -32,6 +32,7 @@ export const state = {
     hubConnected: false,
     hubDeviceName: null,
     hubConnecting: false,
+    hubConnectionMode: null, // "ble" or "serial"
     pythonReady: false, // PyScript initialization state
 
     // UI state (new design features)

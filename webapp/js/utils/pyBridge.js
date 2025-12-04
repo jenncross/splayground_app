@@ -101,6 +101,30 @@ const PyBridge = {
     }
   },
 
+  async connectHubSerial() {
+    if (!this.isPythonReady()) {
+      return { status: "error", error: "Python not ready" };
+    }
+    try {
+      return await window.connect_hub_serial();
+    } catch (e) {
+      console.error("connect_hub_serial failed:", e);
+      return { status: "error", error: e.message };
+    }
+  },
+
+  async disconnectHubSerial() {
+    if (!this.isPythonReady()) {
+      return { status: "error", error: "Python not ready" };
+    }
+    try {
+      return await window.disconnect_hub_serial();
+    } catch (e) {
+      console.error("disconnect_hub_serial failed:", e);
+      return { status: "error", error: e.message };
+    }
+  },
+
   async sendCommandToHub(command, rssiThreshold) {
     if (!this.isPythonReady()) {
       return { status: "error", error: "Python not ready" };

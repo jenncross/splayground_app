@@ -38,9 +38,16 @@ from mpy.webBluetooth import code
 exec(code)  # This executes the code and creates the WebBLE class
 ble = WebBLE()  # Create BLE instance
 
-# BLE connection state
+# Import WebSerial class
+from mpy.webSerial import code as serial_code
+exec(serial_code)  # This executes the code and creates the WebSerial class
+serial = WebSerial()  # Create Serial instance
+
+# Connection state
 ble_connected = False
+serial_connected = False
 hub_device_name = None
+hub_connection_mode = None  # "ble" or "serial"
 
 # Device data (will be updated via BLE from hub)
 devices = []
@@ -462,11 +469,12 @@ async def connect_hub():
 
 async def disconnect_hub():
     """Disconnect from hub"""
-    global ble_connected, hub_device_name
+    global ble_connected, hub_device_name, hub_connection_mode
     
     await ble.disconnect()
     ble_connected = False
     hub_device_name = None
+    hub_connection_mode = None
     
     # Call JavaScript directly
     if hasattr(window, 'onBLEDisconnected'):
@@ -478,6 +486,88 @@ async def disconnect_hub():
     js_result = Object.new()
     js_result.status = "disconnected"
     return js_result
+
+async def connect_hub_serial():
+    """Connect to hub via USB Serial"""
+    global serial_connected, hub_device_name, hub_connection_mode
+    
+    console.log("Attempting Serial connection...")
+    
+    try:
+        success = await serial.connect()
+        
+        if success:
+            serial_connected = True
+            hub_device_name = "USB Serial Hub"
+            hub_connection_mode = "serial"
+            
+            # Set up data callback to reuse BLE data processing
+            serial.on_data_callback = on_serial_data
+            
+            console.log("Serial connected successfully")
+            
+            # Notify JavaScript
+            if hasattr(window, 'onHubConnected'):
+                js_data = Object.new()
+                js_data.deviceName = hub_device_name
+                js_data.mode = "serial"
+                window.onHubConnected(js_data)
+            
+            # Return success
+            js_result = Object.new()
+            js_result.status = "success"
+            js_result.device = hub_device_name
+            js_result.mode = "serial"
+            return js_result
+        else:
+            console.log("Serial connection cancelled or failed")
+            js_result = Object.new()
+            js_result.status = "cancelled"
+            return js_result
+    
+    except Exception as e:
+        error_msg = str(e)
+        console.log(f"Serial connection error: {error_msg}")
+        
+        if "cancelled" in error_msg.lower() or "aborted" in error_msg.lower():
+            js_result = Object.new()
+            js_result.status = "cancelled"
+            return js_result
+        else:
+            js_result = Object.new()
+            js_result.status = "error"
+            js_result.error = error_msg
+            return js_result
+
+async def disconnect_hub_serial():
+    """Disconnect from Serial hub"""
+    global serial_connected, hub_device_name, hub_connection_mode
+    
+    console.log("Disconnecting Serial...")
+    await serial.disconnect()
+    serial_connected = False
+    hub_device_name = None
+    hub_connection_mode = None
+    
+    # Notify JavaScript
+    if hasattr(window, 'onHubDisconnected'):
+        window.onHubDisconnected()
+    
+    js_result = Object.new()
+    js_result.status = "disconnected"
+    return js_result
+
+def on_serial_data(data):
+    """
+    Handle incoming Serial data
+    
+    Serial data is line-delimited JSON, same format as BLE.
+    We can reuse the BLE data processing logic.
+    """
+    console.log(f"Serial RX: {data}")
+    
+    # Reuse BLE data processing (it handles JSON parsing and device updates)
+    process_complete_message(data)
 
 async def send_command_to_hub(command, rssi_threshold="all"):
     """
@@ -496,10 +586,6 @@ async def send_command_to_hub(command, rssi_threshold="all"):
         - "all": Send to all modules regardless of signal strength
         - "-XX": Send only to modules with RSSI >= -XX dBm
         
-    Message Format:
-    The hub expects commands in the format: "[command]":"[rssi_threshold]"
-    Example: "play":"all" or "pause":"-50"
-    
     Returns:
     --------
     dict : JavaScript object with transmission result
@@ -509,26 +595,44 @@ async def send_command_to_hub(command, rssi_threshold="all"):
         - error: Error message if failed
     
     Communication Flow:
-    1. Format command according to hub protocol
-    2. Send via BLE to hub
+    1. Format command according to hub protocol (BLE or Serial)
+    2. Send to hub
     3. Hub broadcasts via ESP-NOW to modules within RSSI range
     4. Modules execute command and may send responses back
     """
-    if not ble.is_connected():
+    # Check connection based on mode
+    if hub_connection_mode == "serial":
+        if not serial.is_connected():
+            js_result = Object.new()
+            js_result.status = "error"
+            js_result.error = "Not connected to hub"
+            return js_result
+        
+        # Format for Serial (JSON)
+        cmd_obj = {"cmd": command, "rssi": rssi_threshold}
+        message = json.dumps(cmd_obj)
+        success = await serial.send(message)
+        
+    elif hub_connection_mode == "ble":
+        if not ble.is_connected():
+            js_result = Object.new()
+            js_result.status = "error"
+            js_result.error = "Not connected to hub"
+            return js_result
+        
+        # Format for BLE (legacy format)
+        message = f'"{command}":"{rssi_threshold}"'
+        success = await ble.send(message)
+    
+    else:
         js_result = Object.new()
         js_result.status = "error"
         js_result.error = "Not connected to hub"
         return js_result
     
-    # Format command for hub using real protocol
-    # Hub expects: "[command]":"[rssi_threshold]"
-    message = f'"{command}":"{rssi_threshold}"'
-    
-    success = await ble.send(message)
-    
     js_result = Object.new()
     if success:
-        console.log(f"Sent to hub: {message}")
+        console.log(f"Sent to hub ({hub_connection_mode}): {command}")
         js_result.status = "sent"
         js_result.command = command
         js_result.threshold = rssi_threshold
@@ -538,31 +642,31 @@ async def send_command_to_hub(command, rssi_threshold="all"):
     return js_result
 
 def get_connection_status():
-    """Get current BLE connection status - Python is source of truth"""
-    # Check actual BLE connection status, not stored variable
-    actual_connected = ble.is_connected()
+    """Get current connection status - Python is source of truth"""
+    # Check actual connection status based on mode
+    if hub_connection_mode == "serial":
+        actual_connected = serial.is_connected()
+    elif hub_connection_mode == "ble":
+        actual_connected = ble.is_connected()
+    else:
+        actual_connected = False
     
-    # Convert None to False for JavaScript compatibility
-    # ble.is_connected() can return None, True, or False
-    # JavaScript needs explicit True/False, not None (which becomes undefined)
+    # Convert to bool for JavaScript compatibility
     actual_connected_bool = bool(actual_connected) if actual_connected is not None else False
     
-    # Update stored variable to match reality
-    global ble_connected
-    if actual_connected_bool != ble_connected:
-        console.log(f"BLE state mismatch: stored={ble_connected}, actual={actual_connected_bool}")
-        ble_connected = actual_connected_bool
+    console.log(f"Connection status: mode={hub_connection_mode}, connected={actual_connected_bool}")
     
     # Return proper JavaScript object
     js_result = Object.new()
     js_result.connected = actual_connected_bool
+    js_result.mode = hub_connection_mode if hub_connection_mode else ""
     # Use empty string instead of None to avoid undefined in JavaScript
     js_result.device = hub_device_name if (actual_connected_bool and hub_device_name) else ""
     return js_result
 
 async def refresh_devices_from_hub(rssi_threshold="all"):
     """
-    Request device list from hub via BLE with RSSI filtering.
+    Request device list from hub with RSSI filtering.
     
     Parameters:
     -----------
@@ -574,26 +678,40 @@ async def refresh_devices_from_hub(rssi_threshold="all"):
     The filtering happens at the module level - only modules that can
     receive the hub's broadcast at the specified RSSI will respond to the ping.
     """
-    if not ble.is_connected():
-        console.log("Cannot refresh: Hub not connected")
-        return to_js([])
-    
     global devices
     
     # Convert rssi_threshold to string for protocol
     threshold_str = str(rssi_threshold)
     
-    # Send PING command to hub with RSSI threshold using real protocol
-    # Hub will broadcast PING to modules and only those with strong enough
-    # signal will respond
-    ping_command = f'"PING":"{threshold_str}"'
-    await ble.send(ping_command)
+    # Send PING command based on connection mode
+    if hub_connection_mode == "serial":
+        if not serial.is_connected():
+            console.log("Cannot refresh: Hub not connected")
+            return to_js([])
+        
+        # Format for Serial (JSON)
+        ping_obj = {"cmd": "PING", "rssi": threshold_str}
+        ping_command = json.dumps(ping_obj)
+        await serial.send(ping_command)
+        
+    elif hub_connection_mode == "ble":
+        if not ble.is_connected():
+            console.log("Cannot refresh: Hub not connected")
+            return to_js([])
+        
+        # Format for BLE (legacy format)
+        ping_command = f'"PING":"{threshold_str}"'
+        await ble.send(ping_command)
+    
+    else:
+        console.log("Cannot refresh: Hub not connected")
+        return to_js([])
     
     # Wait for response (hub should send back device list)
-    # The response will be handled by on_ble_data callback
+    # The response will be handled by on_ble_data or on_serial_data callback
     # which will update the global devices list
     
-    console.log(f"Device scan requested from hub with RSSI threshold: {threshold_str}")
+    console.log(f"Device scan requested from hub ({hub_connection_mode}) with RSSI threshold: {threshold_str}")
     
     # Convert Python list to JavaScript array using to_js()
     return to_js(devices, dict_converter=Object.fromEntries)
@@ -642,6 +760,8 @@ window.get_devices = get_devices
 window.get_connection_status = get_connection_status
 window.connect_hub = create_proxy(connect_hub)
 window.disconnect_hub = create_proxy(disconnect_hub)
+window.connect_hub_serial = create_proxy(connect_hub_serial)
+window.disconnect_hub_serial = create_proxy(disconnect_hub_serial)
 window.send_command_to_hub = create_proxy(send_command_to_hub)
 window.refresh_devices = create_proxy(refresh_devices)
 window.refresh_devices_from_hub = create_proxy(refresh_devices_from_hub)

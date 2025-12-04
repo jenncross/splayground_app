@@ -4,7 +4,7 @@
 **Document Version:** 1.0  
 **Date:** December 2, 2025  
 **Hub Version:** ESP32C3/C3 MicroPython (v1 - Prior Implementation)  
-**Status:** Deprecated (To Be Replaced, Works with Hub to WebApp, )
+**Status:** Deprecated (To Be Replaced, Works with Hub to WebApp not Plushie Module v2 )
 
 ---
 

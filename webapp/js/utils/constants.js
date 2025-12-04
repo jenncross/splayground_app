@@ -26,11 +26,11 @@
  */
 
 export const COMMANDS = [
-    { id: "play", label: "Play", bgColor: "#7eb09b", icon: "play", textColor: "white" },
-    { id: "pause", label: "Pause", bgColor: "#d4a574", icon: "pause", textColor: "white" },
-    { id: "win", label: "Win", bgColor: "#b084cc", icon: "trophy", textColor: "white" },
-    { id: "color_game", label: "Color Game", bgColor: "#658ea9", icon: "palette", textColor: "white" },
-    { id: "number_game", label: "Number Game", bgColor: "#d7a449", icon: "hash", textColor: "white" },
-    { id: "off", label: "Off", bgColor: "#e98973", icon: "poweroff", textColor: "white" },
+    { id: "Notes", label: "Notes", bgColor: "#7eb09b", icon: "music", textColor: "white" },
+    { id: "Shake", label: "Shake", bgColor: "#d4a574", icon: "zap", textColor: "white" },
+    { id: "Hot_cold", label: "Hot/Cold", bgColor: "#b084cc", icon: "thermometer", textColor: "white" },
+    { id: "Jump", label: "Jump", bgColor: "#658ea9", icon: "arrow-up", textColor: "white" },
+    { id: "Rainbow", label: "Rainbow", bgColor: "#d7a449", icon: "rainbow", textColor: "white" },
+    { id: "Off", label: "Off", bgColor: "#e98973", icon: "power-off", textColor: "white" },
 ];
 

@@ -45,6 +45,7 @@ import { createMessageInput } from "./components/messageInput.js";
 import { createDeviceListOverlay } from "./components/deviceListOverlay.js";
 import { createMessageDetailsOverlay } from "./components/messageDetailsOverlay.js";
 import { createConnectionWarningModal } from "./components/connectionWarningModal.js";
+import { showConnectionModal } from "./components/connectionModal.js";
 import { createSettingsOverlay } from "./components/settingsOverlay.js";
 import { showToast } from "./components/toast.js";
 
@@ -209,7 +210,7 @@ class App {
 
         // Direct function calls only - no event listeners needed
 
-        // Direct function for Python to call
+        // Direct function for Python to call (BLE connections)
         window.onBLEConnected = (data) => {
             console.log("Direct BLE connected call:", data);
             console.log("Data type:", typeof data);
@@ -218,8 +219,22 @@ class App {
             setState({
                 hubConnected: true,
                 hubDeviceName: data?.deviceName,
+                hubConnectionMode: "ble",
                 hubConnecting: false,
             });
+        };
+
+        // Direct function for Python to call (both BLE and Serial connections)
+        window.onHubConnected = (data) => {
+            console.log("Hub connected:", data);
+            const mode = data?.mode || "ble";
+            setState({
+                hubConnected: true,
+                hubDeviceName: data?.deviceName,
+                hubConnectionMode: mode,
+                hubConnecting: false,
+            });
+            showToast(`Connected to ${mode === "serial" ? "USB Serial" : "Bluetooth"} hub`, "success");
             
             // Auto-refresh devices on connection
             console.log("Auto-refreshing devices on BLE connection...");
@@ -245,6 +260,30 @@ class App {
             setState({
                 hubConnected: false,
                 hubDeviceName: null,
+                hubConnectionMode: null,
+                hubConnecting: false,
+                isRefreshing: false, // Cancel any pending device scans
+            });
+        };
+
+        // Universal hub disconnected callback (for both BLE and Serial)
+        window.onHubDisconnected = () => {
+            console.log("Hub disconnected");
+            
+            // Clean up any pending timeouts
+            if (this.refreshTimeout) {
+                clearTimeout(this.refreshTimeout);
+                this.refreshTimeout = null;
+            }
+            if (this.cooldownRetryTimeout) {
+                clearTimeout(this.cooldownRetryTimeout);
+                this.cooldownRetryTimeout = null;
+            }
+            
+            setState({
+                hubConnected: false,
+                hubDeviceName: null,
+                hubConnectionMode: null,
                 hubConnecting: false,
                 isRefreshing: false, // Cancel any pending device scans
             });
@@ -841,44 +880,30 @@ class App {
     }
 
     async handleHubConnect() {
-        setState({ hubConnecting: true });
-
-        try {
-            const result = await PyBridgeToUse.connectHub();
-            console.log("ConnectHub result:", result);
-
-            // Use unified error handler
-            const isError = handleError(result, "BLE Connection");
-            
-            if (result.status === "success") {
-                console.log("Successfully connected to hub");
-                // State will be updated by the BLE connected event
-            } else if (result.status === "cancelled") {
-                // User cancelled - handled by error handler (no toast shown)
-                console.log("User cancelled BLE connection");
-                setState({ hubConnecting: false });
-            } else if (isError) {
-                // Real error occurred - error handler already showed toast
-                setState({ hubConnecting: false });
-            }
-            
-            // Always sync state after connection attempt
-            await syncConnectionState();
-        } catch (e) {
-            // Handle exceptions that don't go through Python result format
-            console.error("BLE connection exception:", e);
-            showToast("Bluetooth connection failed. Please try again.", "error");
-            setState({ hubConnecting: false });
-        }
+        // Show connection modal to let user choose BLE or Serial
+        showConnectionModal();
     }
 
     async handleHubDisconnect() {
         try {
-            const result = await PyBridgeToUse.disconnectHub();
+            // Disconnect based on connection mode
+            let result;
+            if (state.hubConnectionMode === "serial") {
+                result = await PyBridgeToUse.disconnectHubSerial();
+            } else {
+                result = await PyBridgeToUse.disconnectHub();
+            }
             console.log("Disconnect result:", result);
             
             // Use unified error handler
             handleError(result, "Hub Disconnect");
+            
+            // Clear connection state
+            setState({
+                hubConnected: false,
+                hubDeviceName: null,
+                hubConnectionMode: null
+            });
             
             // Always sync state after disconnect attempt
             await syncConnectionState();
