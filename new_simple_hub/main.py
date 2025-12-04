@@ -30,14 +30,12 @@ except ImportError:
 # Game command mapping (matching headless_controller)
 GAME_MAP = {
     "Notes": 0,
-    "Play": 0,
     "Shake": 1,
     "Hot_cold": 2,
     "Jump": 3,
-    "Rainbow": 5,
     "Clap": 4,
-    "Pause": -1,
-    "Off": -1
+    "Rainbow": 5,
+    "Off": 6,          # Hibernate game → deep sleep
 }
 
 class SimpleHub:
@@ -140,7 +138,7 @@ class SimpleHub:
             # Direct string check like headless_controller
             if '/ping' in msg:
                 mac_str = ':'.join(f'{b:02x}' for b in mac)
-                self._debug(f"PING response from {mac_str}, RSSI: {rssi}")
+                #self._debug(f"PING response from {mac_str}, RSSI: {rssi}")
             
             # Only process device scan in scanning mode
             if self.scanning_mode and self.scanning:
@@ -379,5 +377,5 @@ class SimpleHub:
 # Run hub
 # Set scanning_mode=True for full device scanning support
 # Set scanning_mode=False for transmit-only mode (like headless controller)
-hub = SimpleHub(scanning_mode=false)
+hub = SimpleHub(scanning_mode=False)
 asyncio.run(hub.run())
