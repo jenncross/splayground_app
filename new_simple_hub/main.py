@@ -27,7 +27,7 @@ try:
 except ImportError:
     DISPLAY_AVAILABLE = False
 
-# Game command mapping (matching headless_controller)
+# Game command mapping (matching headless_controller CLAUDE:DO NOT MODIFY)
 GAME_MAP = {
     "Notes": 0,
     "Shake": 1,
@@ -68,7 +68,7 @@ class SimpleHub:
         self.display_lines = []  # Rolling buffer of last 6 debug messages
         self._init_display()
         
-        self._debug(f"Simple Hub initialized (scanning_mode={scanning_mode})")
+        self._debug("Hub Init")
     
     def _init_display(self):
         """Attempt to initialize SSD1306 display with try/except"""
@@ -130,7 +130,7 @@ class SimpleHub:
     
     def connect(self):
         """Initialize ESP-NOW connection following plushie pattern"""
-        self._debug("Connecting ESP-NOW...")
+        self._debug("Connecting")
         
         # Define callback (simplified like headless_controller)
         def my_callback(msg, mac, rssi):
@@ -147,16 +147,16 @@ class SimpleHub:
                         data = json.loads(msg)
                         self._handle_device_response(mac, data, rssi)
                     except Exception as e:
-                        self._debug(f"Device scan parse error: {e}")
+                        self._debug("Scan Err")
         
         # Initialize ESP-NOW following plushie pattern
         self.n = now.Now(my_callback)
         self.n.connect()
         self.mac = self.n.wifi.config('mac')
         mac_str = ':'.join(f'{b:02x}' for b in self.mac)
-        self._debug(f"MAC address: {mac_str}")
+        self._debug(f"MAC:{mac_str[-8:]}")
         self.n.antenna()  # Explicit antenna() call for C6 external antenna
-        self._debug("ESP-NOW connected with external antenna")
+        self._debug("NOW Ready")
         
         # Send ready message to webapp via Serial
         self._send_serial({
@@ -169,19 +169,19 @@ class SimpleHub:
         """Send shutdown command (same as headless_controller)"""
         stop = json.dumps({'topic':'/game', 'value':-1})
         self.n.publish(stop)
-        self._debug("Shutdown command sent")
+        self._debug("Gm:Off")
     
     def ping(self):
         """Send PING command (same as headless_controller)"""
         ping = json.dumps({'topic':'/ping', 'value':1})
         self.n.publish(ping)
-        self._debug("PING sent")
+        self._debug("PING->Devs")
     
     def notify(self):
         """Send notify command (same as headless_controller)"""
         note = json.dumps({'topic':'/notify', 'value':1})
         self.n.publish(note)
-        self._debug("Notify sent")
+        self._debug("Notif->Devs")
     
     def choose(self, game):
         """Send game command - matches headless_controller exactly"""
@@ -190,7 +190,7 @@ class SimpleHub:
         encoded_string = encoded_bytes.decode('ascii')
         mac = json.dumps({'topic':'/gem', 'value':encoded_string})
         self.n.publish(mac)
-        self._debug(f"Gem message sent: {encoded_string}")
+        self._debug("Gem->Devs")
         
         # Wait 1 second (critical timing from headless_controller)
         time.sleep(1)
@@ -198,7 +198,7 @@ class SimpleHub:
         # Then: Send game command
         setup = json.dumps({'topic':'/game', 'value':game})
         self.n.publish(setup)
-        self._debug(f"Game command sent: {game}")
+        self._debug(f"Val:{game}")
     
     def _handle_device_response(self, mac, data, rssi):
         """Process device scan response (only used in scanning mode)"""
@@ -226,7 +226,7 @@ class SimpleHub:
         else:
             self.discovered_devices[mac_str] = device_info
         
-        self._debug(f"Device found: {device_info['id']} (RSSI: {rssi})")
+        self._debug(f"Dev:{rssi}dB")
     
     def _send_serial(self, data):
         """Send JSON message to webapp via Serial"""
@@ -235,7 +235,7 @@ class SimpleHub:
             print(msg)  # Print to stdout (USB Serial) - JSON only!
             # Note: MicroPython's sys.stdout doesn't have flush(), but print() auto-flushes
         except Exception as e:
-            self._debug(f"Serial send error: {e}")
+            self._debug("Ser TX Err")
     
     def _check_serial_input(self):
         """Check for incoming Serial data (non-blocking)"""
@@ -257,7 +257,7 @@ class SimpleHub:
                         if line:
                             self._process_serial_command(line)
             except Exception as e:
-                self._debug(f"Serial read error: {e}")
+                self._debug("Ser RX Err")
     
     def _process_serial_command(self, line):
         """Process command from webapp"""
@@ -273,6 +273,9 @@ class SimpleHub:
             elif cmd_type in GAME_MAP:
                 # Send game command using choose() method
                 game_num = GAME_MAP[cmd_type]
+                # Show game name (truncate to fit 12 char limit: "Gm:" + 9 chars)
+                game_display = cmd_type[:9] if len(cmd_type) <= 9 else cmd_type[:8] + "."
+                self._debug(f"Gm:{game_display}")
                 self.choose(game_num)
                 
                 # Send acknowledgment to webapp
@@ -292,18 +295,20 @@ class SimpleHub:
                 })
             
             else:
-                self._debug(f"Unknown command: {cmd_type}")
+                # Show unknown command (truncate to fit)
+                unk_display = str(cmd_type)[:8] if cmd_type else "None"
+                self._debug(f"Unk:{unk_display}")
         
         except Exception as e:
-            self._debug(f"Command processing error: {e}")
+            self._debug("CMD Err")
     
     def _start_scan(self, rssi_threshold):
         """Start device scan (only works in scanning_mode)"""
         if not self.scanning_mode:
-            self._debug("Scanning disabled in transmit-only mode")
+            self._debug("Scan Off")
             return
         
-        self._debug(f"Starting device scan (RSSI: {rssi_threshold})")
+        self._debug("Scan Start")
         
         self.scanning = True
         self.scan_start_time = time.time()
@@ -333,15 +338,15 @@ class SimpleHub:
                 "list": device_list
             })
             
-            self._debug(f"Scan complete: {len(device_list)} devices found")
+            self._debug(f"Found:{len(device_list)}")
     
     async def run(self):
         """Main event loop"""
         self.connect()
         self.running = True
         
-        self._debug("Hub running. Press Ctrl+C to stop.")
-        self._debug("Waiting for commands from webapp via Serial...")
+        self._debug("Running")
+        self._debug("Wait CMD")
         
         try:
             while self.running:
@@ -356,7 +361,7 @@ class SimpleHub:
                 await asyncio.sleep(0.01)
         
         except KeyboardInterrupt:
-            self._debug("\nShutting down...")
+            self._debug("Stopping")
         
         finally:
             self.close()
@@ -372,7 +377,7 @@ class SimpleHub:
                 self.display.show()
             except:
                 pass
-        self._debug("Hub stopped")
+        self._debug("Stopped")
 
 # Run hub
 # Set scanning_mode=True for full device scanning support
