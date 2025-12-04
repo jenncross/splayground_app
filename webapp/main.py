@@ -376,6 +376,33 @@ def on_ble_data(data):
 # Set the callback for BLE data
 ble.on_data_callback = on_ble_data
 
+def on_serial_disconnect(error_msg):
+    """
+    Handle unexpected serial disconnection.
+    
+    This is called when the serial read loop encounters a connection loss error.
+    It updates the global connection state and notifies the JavaScript UI.
+    """
+    global serial_connected, hub_device_name, hub_connection_mode
+    
+    console.log("Serial disconnection detected - updating state")
+    
+    # Update connection state
+    serial_connected = False
+    hub_device_name = None
+    hub_connection_mode = None
+    
+    # Notify JavaScript UI
+    if hasattr(window, 'onHubDisconnected'):
+        window.onHubDisconnected()
+    
+    # Show user-visible notification
+    if hasattr(window, 'showToast'):
+        window.showToast("⚠️ USB connection lost! Check cable and reconnect.", "error", 5000)
+
+# Set the callback for serial disconnect
+serial.on_disconnect_callback = on_serial_disconnect
+
 
 # BLE Connection Functions
 async def connect_hub():

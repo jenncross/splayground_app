@@ -30,14 +30,12 @@ except ImportError:
 # Game command mapping (matching headless_controller)
 GAME_MAP = {
     "Notes": 0,
-    "Play": 0,
     "Shake": 1,
     "Hot_cold": 2,
     "Jump": 3,
-    "Rainbow": 5,
     "Clap": 4,
-    "Pause": -1,
-    "Off": -1
+    "Rainbow": 5,
+    "Off": 6,          # Hibernate game → deep sleep
 }
 
 class SimpleHub:
@@ -71,6 +69,7 @@ class SimpleHub:
         self._init_display()
         
         self._debug(f"Simple Hub initialized (scanning_mode={scanning_mode})")
+        self._show_status("Initializing...")
     
     def _init_display(self):
         """Attempt to initialize SSD1306 display with try/except"""
@@ -93,7 +92,7 @@ class SimpleHub:
             print(f"Display not available: {e}", file=sys.stderr)
     
     def _update_display(self, msg):
-        """Update display with new debug message (rolling buffer)"""
+        """Update display with concise status message"""
         if not self.display:
             return
         
@@ -126,22 +125,19 @@ class SimpleHub:
     def _debug(self, msg):
         """Print debug message to stderr (not interfering with JSON on stdout)"""
         print(msg, file=sys.stderr)
-        # Also update display if available
-        if self.display:
-            self._update_display(msg)
+    
+    def _show_status(self, status):
+        """Show brief status on display (abbreviated for 20 char width)"""
+        self._update_display(status)
     
     def connect(self):
         """Initialize ESP-NOW connection following plushie pattern"""
         self._debug("Connecting ESP-NOW...")
+        self._show_status("Connecting...")
         
         # Define callback (simplified like headless_controller)
         def my_callback(msg, mac, rssi):
             """ESP-NOW message callback - simple like headless_controller"""
-            # Direct string check like headless_controller
-            if '/ping' in msg:
-                mac_str = ':'.join(f'{b:02x}' for b in mac)
-                self._debug(f"PING response from {mac_str}, RSSI: {rssi}")
-            
             # Only process device scan in scanning mode
             if self.scanning_mode and self.scanning:
                 if '/deviceScan' in msg:
@@ -149,7 +145,8 @@ class SimpleHub:
                         data = json.loads(msg)
                         self._handle_device_response(mac, data, rssi)
                     except Exception as e:
-                        self._debug(f"Device scan parse error: {e}")
+                        # Don't print parse errors - they pollute serial output to webapp
+                        pass
         
         # Initialize ESP-NOW following plushie pattern
         self.n = now.Now(my_callback)
@@ -166,27 +163,45 @@ class SimpleHub:
             "mode": "scanning" if self.scanning_mode else "transmit_only",
             "mac": mac_str
         })
+        
+        # Show ready on display
+        self._show_status("Ready!")
     
     def shutdown(self):
         """Send shutdown command (same as headless_controller)"""
         stop = json.dumps({'topic':'/game', 'value':-1})
         self.n.publish(stop)
         self._debug("Shutdown command sent")
+        self._show_status("Shutdown sent")
     
     def ping(self):
         """Send PING command (same as headless_controller)"""
         ping = json.dumps({'topic':'/ping', 'value':1})
         self.n.publish(ping)
         self._debug("PING sent")
+        self._show_status("Scanning...")
     
     def notify(self):
         """Send notify command (same as headless_controller)"""
         note = json.dumps({'topic':'/notify', 'value':1})
         self.n.publish(note)
         self._debug("Notify sent")
+        self._show_status("Notify sent")
     
     def choose(self, game):
         """Send game command - matches headless_controller exactly"""
+        # Map game number to short name for display
+        game_names = {
+            0: "Notes",
+            1: "Shake", 
+            2: "Hot/Cold",
+            3: "Jump",
+            4: "Clap",
+            5: "Rainbow",
+            6: "Off"
+        }
+        game_name = game_names.get(game, f"Game{game}")
+        
         # First: Send gem message with base64-encoded MAC
         encoded_bytes = base64.b64encode(self.mac)
         encoded_string = encoded_bytes.decode('ascii')
@@ -201,6 +216,9 @@ class SimpleHub:
         setup = json.dumps({'topic':'/game', 'value':game})
         self.n.publish(setup)
         self._debug(f"Game command sent: {game}")
+        
+        # Show on display
+        self._show_status(f"Sent: {game_name}")
     
     def _handle_device_response(self, mac, data, rssi):
         """Process device scan response (only used in scanning mode)"""
@@ -285,8 +303,8 @@ class SimpleHub:
                 })
             
             elif cmd_type == "Off":
-                # Use shutdown() method
-                self.shutdown()
+                # Off now sends game 6 (hibernate mode)
+                self.choose(6)
                 self._send_serial({
                     "type": "ack",
                     "command": "Off",
@@ -336,6 +354,7 @@ class SimpleHub:
             })
             
             self._debug(f"Scan complete: {len(device_list)} devices found")
+            self._show_status(f"Found: {len(device_list)} devs")
     
     async def run(self):
         """Main event loop"""
@@ -344,6 +363,7 @@ class SimpleHub:
         
         self._debug("Hub running. Press Ctrl+C to stop.")
         self._debug("Waiting for commands from webapp via Serial...")
+        self._show_status("Waiting...")
         
         try:
             while self.running:
@@ -379,5 +399,5 @@ class SimpleHub:
 # Run hub
 # Set scanning_mode=True for full device scanning support
 # Set scanning_mode=False for transmit-only mode (like headless controller)
-hub = SimpleHub(scanning_mode=false)
+hub = SimpleHub(scanning_mode=False)
 asyncio.run(hub.run())

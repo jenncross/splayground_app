@@ -11,12 +11,13 @@
  * - Command properties: id, label, background color, icon, text color
  * 
  * Command Types:
- * - play: Start playground activity
- * - pause: Pause current activity
- * - win: Trigger win/success state
- * - color_game: Start color-based game
- * - number_game: Start number-based game
- * - off: Turn off/reset modules
+ * - Notes: Musical notes game
+ * - Shake: Shake detection game
+ * - Hot_cold: Hot/Cold proximity game
+ * - Jump: Jump detection game
+ * - Clap: Clap detection game
+ * - Rainbow: Rainbow light animation
+ * - Off: Hibernate mode (deep sleep)
  * 
  * Usage:
  * - Import COMMANDS array for command palette generation
@@ -30,6 +31,7 @@ export const COMMANDS = [
     { id: "Shake", label: "Shake", bgColor: "#d4a574", icon: "zap", textColor: "white" },
     { id: "Hot_cold", label: "Hot/Cold", bgColor: "#b084cc", icon: "thermometer", textColor: "white" },
     { id: "Jump", label: "Jump", bgColor: "#658ea9", icon: "arrow-up", textColor: "white" },
+    { id: "Clap", label: "Clap", bgColor: "#8fbc8f", icon: "hand", textColor: "white" },
     { id: "Rainbow", label: "Rainbow", bgColor: "#d7a449", icon: "rainbow", textColor: "white" },
     { id: "Off", label: "Off", bgColor: "#e98973", icon: "power-off", textColor: "white" },
 ];

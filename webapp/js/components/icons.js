@@ -11,19 +11,14 @@ export function createIcon(name, className = "w-4 h-4") {
 
 export function getCommandIcon(commandLabel, size = "small") {
     const commands = {
-        // New game commands
+        // Current game commands
         Notes: { bgColor: "#7eb09b", icon: "music" },
         Shake: { bgColor: "#d4a574", icon: "zap" },
         "Hot/Cold": { bgColor: "#b084cc", icon: "thermometer" },
         Jump: { bgColor: "#658ea9", icon: "arrow-up" },
+        Clap: { bgColor: "#8fbc8f", icon: "hand" },
         Rainbow: { bgColor: "#d7a449", icon: "rainbow" },
         Off: { bgColor: "#e98973", icon: "power-off" },
-        // Legacy commands (for compatibility)
-        Play: { bgColor: "#7eb09b", icon: "play" },
-        Pause: { bgColor: "#d4a574", icon: "pause" },
-        Win: { bgColor: "#b084cc", icon: "trophy" },
-        "Color Game": { bgColor: "#658ea9", icon: "palette" },
-        "Number Game": { bgColor: "#d7a449", icon: "hash" },
     };
 
     // Get command config or use placeholder for unknown commands

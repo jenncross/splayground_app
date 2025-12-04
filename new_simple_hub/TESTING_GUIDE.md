@@ -104,8 +104,9 @@ python3 -m http.server 8000
    - Shake (motion game)
    - Hot/Cold (proximity game)
    - Jump (jumping game)
+   - Clap (sound detection)
    - Rainbow (light show)
-   - Off (stop all)
+   - Off (hibernate mode)
 3. Click send button
 4. All modules in range should execute the command
 
@@ -138,6 +139,7 @@ python3 -m http.server 8000
   - Shake ✅
   - Hot/Cold ✅
   - Jump ✅
+  - Clap ✅
   - Rainbow ✅
   - Off ✅
 
@@ -329,8 +331,8 @@ time.sleep(0.5)
 response = ser.read(ser.in_waiting).decode()
 print(f"Response: {response}")
 
-# Test 3: Off command
-print("\nTest 3: Off command")
+# Test 3: Off command (hibernate mode)
+print("\nTest 3: Off command (hibernate mode)")
 cmd = {"cmd": "Off"}
 ser.write((json.dumps(cmd) + "\n").encode())
 time.sleep(0.5)

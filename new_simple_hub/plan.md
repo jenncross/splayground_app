@@ -32,9 +32,9 @@
 ### Issue 1: Game Command Misalignment (CRITICAL)
 
 **Current State**:
-- Webapp UI shows 6 old games: Play, Pause, Win, Color Game, Number Game, Off
-- Plushie modules implement 6 new games: Notes, Shake, Hot_cold, Jump, Rainbow, (duplicate Notes)
-- BLE Protocol V1 maps old commands to ESP-NOW messages
+- Webapp UI shows 7 current games: Notes, Shake, Hot_cold, Jump, Clap, Rainbow, Off
+- Plushie modules implement these games with corresponding game numbers (0-6)
+- ESP-NOW Protocol V2 defines the message format
 - No mapping between old UI and new games
 
 **Impact**: Webapp sends commands modules don't understand. Functionality is broken.
@@ -351,15 +351,15 @@ class SimpleHub:
     
     def _send_game_command(self, command, rssi_threshold):
         """Send game command via ESP-NOW"""
-        # Map command to game number (update based on actual mapping)
+        # Map command to game number
         game_map = {
-            "Play": 0, "Notes": 0,
+            "Notes": 0,
             "Shake": 1,
             "Hot_cold": 2,
             "Jump": 3,
+            "Clap": 4,
             "Rainbow": 5,
-            "Pause": -1,
-            "Off": -1
+            "Off": 6  # Hibernate mode
         }
         
         game_num = game_map.get(command, 0)
@@ -773,12 +773,13 @@ export const state = {
 **Recommended Changes**:
 ```javascript
 export const COMMANDS = [
-    { id: "notes", label: "Notes", bgColor: "#7eb09b", icon: "music", textColor: "white" },
-    { id: "shake", label: "Shake", bgColor: "#d4a574", icon: "zap", textColor: "white" },
-    { id: "hot_cold", label: "Hot/Cold", bgColor: "#b084cc", icon: "thermometer", textColor: "white" },
-    { id: "jump", label: "Jump", bgColor: "#658ea9", icon: "arrow-up", textColor: "white" },
-    { id: "rainbow", label: "Rainbow", bgColor: "#d7a449", icon: "rainbow", textColor: "white" },
-    { id: "off", label: "Off", bgColor: "#e98973", icon: "power-off", textColor: "white" },
+    { id: "Notes", label: "Notes", bgColor: "#7eb09b", icon: "music", textColor: "white" },
+    { id: "Shake", label: "Shake", bgColor: "#d4a574", icon: "zap", textColor: "white" },
+    { id: "Hot_cold", label: "Hot/Cold", bgColor: "#b084cc", icon: "thermometer", textColor: "white" },
+    { id: "Jump", label: "Jump", bgColor: "#658ea9", icon: "arrow-up", textColor: "white" },
+    { id: "Clap", label: "Clap", bgColor: "#8fbc8f", icon: "hand", textColor: "white" },
+    { id: "Rainbow", label: "Rainbow", bgColor: "#d7a449", icon: "rainbow", textColor: "white" },
+    { id: "Off", label: "Off", bgColor: "#e98973", icon: "power-off", textColor: "white" },
 ];
 ```
 
@@ -793,6 +794,7 @@ export function getCommandIcon(commandLabel, size = "small") {
         Shake: { bgColor: "#d4a574", icon: "zap" },
         "Hot/Cold": { bgColor: "#b084cc", icon: "thermometer" },
         Jump: { bgColor: "#658ea9", icon: "arrow-up" },
+        Clap: { bgColor: "#8fbc8f", icon: "hand" },
         Rainbow: { bgColor: "#d7a449", icon: "rainbow" },
         Off: { bgColor: "#e98973", icon: "power-off" },
     };
@@ -922,7 +924,7 @@ Before implementation begins, clarify:
 
 2. **Battery Reporting**: Is LC709203F sensor present on all modules? What to report if sensor missing?
 
-3. **Game Mapping**: Should old command names (Play, Pause, etc.) be removed entirely or kept as aliases?
+3. **Game Mapping**: Old command names (Play, Pause, Win) have been removed from UI. Current games are: Notes, Shake, Hot_cold, Jump, Clap, Rainbow, Off.
 
 4. **Error Handling**: What should happen if device scan finds no modules? Show error or empty list?
 

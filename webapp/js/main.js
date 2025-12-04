@@ -49,6 +49,9 @@ import { showConnectionModal } from "./components/connectionModal.js";
 import { createSettingsOverlay } from "./components/settingsOverlay.js";
 import { showToast } from "./components/toast.js";
 
+// Expose showToast to Python backend
+window.showToast = showToast;
+
 /**
  * Unified error handler for Python backend responses.
  * 

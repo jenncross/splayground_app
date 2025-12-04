@@ -38,11 +38,11 @@ class Now():
         except Exception as e:
             print(f"Receive Error: {e}")
 
-    def connect(self):
+    def connect(self, antenna = True):
         # Set up the network and ESPNow
         self.wifi = network.WLAN(network.STA_IF) # ESP network type
         self.wifi.active(True)
-        self.antenna()
+        if antenna: self.antenna()
         self.now_network = espnow.ESPNow()
         self.now_network.active(True)
         self.now_network.add_peer(self.everyone)

@@ -37,6 +37,7 @@ class WebSerial:
         self.reader = None
         self.writer = None
         self.on_data_callback = None
+        self.on_disconnect_callback = None
         self.read_loop_task = None
         
     async def connect(self):
@@ -170,6 +171,13 @@ class WebSerial:
                 print("  2. Close any other applications using the port")
                 print("  3. Click 'Connect Hub' again")
                 print("")
+                
+                # Notify disconnect callback
+                if self.on_disconnect_callback:
+                    try:
+                        self.on_disconnect_callback(error_msg)
+                    except Exception as cb_error:
+                        print(f"Disconnect callback error: {cb_error}")
             # Don't print error if connection was intentionally closed
             elif "cancel" not in error_msg.lower() and "abort" not in error_msg.lower():
                 print(f"Read loop error: {e}")

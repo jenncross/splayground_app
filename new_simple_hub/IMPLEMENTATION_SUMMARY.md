@@ -38,13 +38,14 @@ A single-processor USB Serial to ESP-NOW bridge that reuses the proven Controlle
 **Files Modified:**
 - `webapp/js/utils/constants.js` - New game names and icons
 
-**New Commands:**
-- Notes (music) - replaces "Play"
-- Shake (motion)
-- Hot/Cold (proximity)
-- Jump (jumping)
-- Rainbow (light show)
-- Off (stop all)
+**Current Commands:**
+- Notes (music) - game 0
+- Shake (motion) - game 1
+- Hot/Cold (proximity) - game 2
+- Jump (jumping) - game 3
+- Clap (sound detection) - game 4
+- Rainbow (light show) - game 5
+- Off (hibernate mode) - game 6
 
 ### 4. Documentation
 **Files Created:**

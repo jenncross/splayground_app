@@ -59,4 +59,4 @@ light_test()
 accel_test()
 battery_test()
 
-#utilities.hibernate()
+utilities.hibernate()

@@ -108,6 +108,7 @@ The hub accepts JSON commands via USB Serial:
 {"cmd": "Shake"}
 {"cmd": "Hot_cold"}
 {"cmd": "Jump"}
+{"cmd": "Clap"}
 {"cmd": "Rainbow"}
 {"cmd": "Off"}
 ```
@@ -161,17 +162,15 @@ Example ESP-NOW messages:
 
 ## Game Mapping
 
-| Webapp Command | Game Number | Module Game |
-|---------------|-------------|-------------|
-| Notes         | 0           | Music/Notes |
-| Play          | 0           | Music/Notes |
-| Shake         | 1           | Shake       |
-| Hot_cold      | 2           | Hot/Cold    |
-| Jump          | 3           | Jump        |
-| Clap          | 4           | Clap        |
-| Rainbow       | 5           | Rainbow     |
-| Pause         | -1          | Stop        |
-| Off           | -1          | Stop        |
+| Webapp Command | Game Number | Module Game       |
+|---------------|-------------|-------------------|
+| Notes         | 0           | Music/Notes       |
+| Shake         | 1           | Shake             |
+| Hot_cold      | 2           | Hot/Cold          |
+| Jump          | 3           | Jump              |
+| Clap          | 4           | Clap              |
+| Rainbow       | 5           | Rainbow           |
+| Off           | 6           | Hibernate (sleep) |
 
 ## Code Structure
 
