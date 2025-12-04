@@ -14,6 +14,7 @@ import json
 import time
 import asyncio
 import utilities.now as now
+import utilities.base64 as base64
 
 # Try to import display support
 ROW_HEIGHT = 10  # Pixels per line on 128x64 display (can fit 6 lines)
@@ -130,36 +131,34 @@ class SimpleHub:
             self._update_display(msg)
     
     def connect(self):
-        """Initialize ESP-NOW connection (same pattern as headless_controller)"""
+        """Initialize ESP-NOW connection following plushie pattern"""
         self._debug("Connecting ESP-NOW...")
         
+        # Define callback (simplified like headless_controller)
         def my_callback(msg, mac, rssi):
-            """ESP-NOW message callback"""
+            """ESP-NOW message callback - simple like headless_controller"""
+            # Direct string check like headless_controller
+            if '/ping' in msg:
+                mac_str = ':'.join(f'{b:02x}' for b in mac)
+                self._debug(f"PING response from {mac_str}, RSSI: {rssi}")
+            
+            # Only process device scan in scanning mode
             if self.scanning_mode and self.scanning:
-                # Only process messages if we're in scanning mode and currently scanning
-                try:
-                    msg_str = msg.decode('utf-8') if isinstance(msg, bytes) else msg
-                    if '/deviceScan' in msg_str:
-                        data = json.loads(msg_str)
+                if '/deviceScan' in msg:
+                    try:
+                        data = json.loads(msg)
                         self._handle_device_response(mac, data, rssi)
-                    elif '/ping' in msg_str:
-                        # Debug: show ping responses
-                        mac_str = ':'.join(f'{b:02x}' for b in mac)
-                        self._debug(f"PING response from {mac_str}, RSSI: {rssi}")
-                except Exception as e:
-                    self._debug(f"Callback error: {e}")
+                    except Exception as e:
+                        self._debug(f"Device scan parse error: {e}")
         
-        # Initialize ESP-NOW with callback
-        if self.scanning_mode:
-            self.n = now.Now(my_callback)
-        else:
-            # Transmit-only: use default callback
-            self.n = now.Now()
-        
-        self.n.connect(antenna=True)  # Use external antenna
+        # Initialize ESP-NOW following plushie pattern
+        self.n = now.Now(my_callback)
+        self.n.connect()
         self.mac = self.n.wifi.config('mac')
         mac_str = ':'.join(f'{b:02x}' for b in self.mac)
-        self._debug(f"ESP-NOW connected. MAC: {mac_str}")
+        self._debug(f"MAC address: {mac_str}")
+        self.n.antenna()  # Explicit antenna() call for C6 external antenna
+        self._debug("ESP-NOW connected with external antenna")
         
         # Send ready message to webapp via Serial
         self._send_serial({
@@ -187,7 +186,18 @@ class SimpleHub:
         self._debug("Notify sent")
     
     def choose(self, game):
-        """Send game command (same as headless_controller)"""
+        """Send game command - matches headless_controller exactly"""
+        # First: Send gem message with base64-encoded MAC
+        encoded_bytes = base64.b64encode(self.mac)
+        encoded_string = encoded_bytes.decode('ascii')
+        mac = json.dumps({'topic':'/gem', 'value':encoded_string})
+        self.n.publish(mac)
+        self._debug(f"Gem message sent: {encoded_string}")
+        
+        # Wait 1 second (critical timing from headless_controller)
+        time.sleep(1)
+        
+        # Then: Send game command
         setup = json.dumps({'topic':'/game', 'value':game})
         self.n.publish(setup)
         self._debug(f"Game command sent: {game}")
@@ -369,5 +379,5 @@ class SimpleHub:
 # Run hub
 # Set scanning_mode=True for full device scanning support
 # Set scanning_mode=False for transmit-only mode (like headless controller)
-hub = SimpleHub(scanning_mode=True)
+hub = SimpleHub(scanning_mode=false)
 asyncio.run(hub.run())
