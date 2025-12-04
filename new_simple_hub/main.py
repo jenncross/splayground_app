@@ -15,6 +15,17 @@ import time
 import asyncio
 import utilities.now as now
 
+# Try to import display support
+ROW_HEIGHT = 10  # Pixels per line on 128x64 display (can fit 6 lines)
+MAX_DISPLAY_LINES = 6
+
+try:
+    from machine import I2C, Pin
+    import ssd1306
+    DISPLAY_AVAILABLE = True
+except ImportError:
+    DISPLAY_AVAILABLE = False
+
 # Game command mapping (matching headless_controller)
 GAME_MAP = {
     "Notes": 0,
@@ -53,11 +64,70 @@ class SimpleHub:
         # Serial input buffer
         self.serial_buffer = ""
         
+        # Display setup (try/except to handle missing display)
+        self.display = None
+        self.display_lines = []  # Rolling buffer of last 6 debug messages
+        self._init_display()
+        
         self._debug(f"Simple Hub initialized (scanning_mode={scanning_mode})")
+    
+    def _init_display(self):
+        """Attempt to initialize SSD1306 display with try/except"""
+        if not DISPLAY_AVAILABLE:
+            return
+        
+        try:
+            # Try to initialize I2C and display (using same pins as headless_controller)
+            i2c = I2C(scl=Pin(23), sda=Pin(22))
+            self.display = ssd1306.SSD1306_I2C(128, 64, i2c)
+            self.display.fill(0)
+            self.display.show()
+            # Show initial message
+            self.display.text("Hub Starting...", 2, 2, 1)
+            self.display.show()
+            print("Display initialized successfully", file=sys.stderr)
+        except Exception as e:
+            # Display not available or failed to initialize - continue without it
+            self.display = None
+            print(f"Display not available: {e}", file=sys.stderr)
+    
+    def _update_display(self, msg):
+        """Update display with new debug message (rolling buffer)"""
+        if not self.display:
+            return
+        
+        try:
+            # Truncate message to fit display width (128 pixels, ~21 chars at 6x8 font)
+            max_chars = 20
+            if len(msg) > max_chars:
+                msg = msg[:max_chars-3] + "..."
+            
+            # Add to rolling buffer
+            self.display_lines.append(msg)
+            
+            # Keep only last MAX_DISPLAY_LINES messages
+            if len(self.display_lines) > MAX_DISPLAY_LINES:
+                self.display_lines = self.display_lines[-MAX_DISPLAY_LINES:]
+            
+            # Clear and redraw all lines
+            self.display.fill(0)
+            y = 2
+            for line in self.display_lines:
+                self.display.text(line, 2, y, 1)
+                y += ROW_HEIGHT
+            
+            self.display.show()
+        except Exception as e:
+            # If display update fails, just continue without it
+            print(f"Display update error: {e}", file=sys.stderr)
+            self.display = None
     
     def _debug(self, msg):
         """Print debug message to stderr (not interfering with JSON on stdout)"""
         print(msg, file=sys.stderr)
+        # Also update display if available
+        if self.display:
+            self._update_display(msg)
     
     def connect(self):
         """Initialize ESP-NOW connection (same pattern as headless_controller)"""
@@ -287,6 +357,13 @@ class SimpleHub:
         """Cleanup resources"""
         if self.n:
             self.n.close()
+        if self.display:
+            try:
+                self.display.fill(0)
+                self.display.text("Hub Stopped", 2, 28, 1)
+                self.display.show()
+            except:
+                pass
         self._debug("Hub stopped")
 
 # Run hub
