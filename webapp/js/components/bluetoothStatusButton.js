@@ -1,6 +1,6 @@
 /**
- * Bluetooth Status Button Component
- * Displays BLE connection status with proper styling and layout stability
+ * Hub Status Button Component
+ * Displays Serial/USB hub connection status with proper styling and layout stability
  */
 
 export function createBluetoothStatusButton(isConnected, deviceName, onConnect, onDisconnect, pythonReady = true) {
@@ -28,7 +28,7 @@ export function createBluetoothStatusButton(isConnected, deviceName, onConnect, 
             : 'bg-amber-100'
     }`;
     button.style.width = '130px'; // Fixed width to prevent layout shift
-    button.title = isConnected ? "Disconnect Bluetooth" : "Connect Bluetooth";
+    button.title = isConnected ? "Disconnect Hub" : "Connect Hub (USB)";
     
     button.innerHTML = `
         <div class="status-dot w-1.5 h-1.5 rounded-full flex-shrink-0 ${
@@ -40,7 +40,7 @@ export function createBluetoothStatusButton(isConnected, deviceName, onConnect, 
             ${isConnected ? 'Connected' : 'Disconnected'}
         </span>
         <div class="flex-1"></div>
-        <i data-lucide="bluetooth" class="w-3.5 h-3.5 flex-shrink-0 ${
+        <i data-lucide="${isConnected ? 'cable' : 'plug'}" class="w-3.5 h-3.5 flex-shrink-0 ${
             isConnected ? 'text-green-600' : 'text-amber-700'
         }"></i>
     `;

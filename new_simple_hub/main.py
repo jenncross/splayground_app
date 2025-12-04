@@ -53,11 +53,15 @@ class SimpleHub:
         # Serial input buffer
         self.serial_buffer = ""
         
-        print(f"Simple Hub initialized (scanning_mode={scanning_mode})")
+        self._debug(f"Simple Hub initialized (scanning_mode={scanning_mode})")
+    
+    def _debug(self, msg):
+        """Print debug message to stderr (not interfering with JSON on stdout)"""
+        print(msg, file=sys.stderr)
     
     def connect(self):
         """Initialize ESP-NOW connection (same pattern as headless_controller)"""
-        print("Connecting ESP-NOW...")
+        self._debug("Connecting ESP-NOW...")
         
         def my_callback(msg, mac, rssi):
             """ESP-NOW message callback"""
@@ -71,9 +75,9 @@ class SimpleHub:
                     elif '/ping' in msg_str:
                         # Debug: show ping responses
                         mac_str = ':'.join(f'{b:02x}' for b in mac)
-                        print(f"PING response from {mac_str}, RSSI: {rssi}")
+                        self._debug(f"PING response from {mac_str}, RSSI: {rssi}")
                 except Exception as e:
-                    print(f"Callback error: {e}")
+                    self._debug(f"Callback error: {e}")
         
         # Initialize ESP-NOW with callback
         if self.scanning_mode:
@@ -85,7 +89,7 @@ class SimpleHub:
         self.n.connect(antenna=True)  # Use external antenna
         self.mac = self.n.wifi.config('mac')
         mac_str = ':'.join(f'{b:02x}' for b in self.mac)
-        print(f"ESP-NOW connected. MAC: {mac_str}")
+        self._debug(f"ESP-NOW connected. MAC: {mac_str}")
         
         # Send ready message to webapp via Serial
         self._send_serial({
@@ -98,25 +102,25 @@ class SimpleHub:
         """Send shutdown command (same as headless_controller)"""
         stop = json.dumps({'topic':'/game', 'value':-1})
         self.n.publish(stop)
-        print("Shutdown command sent")
+        self._debug("Shutdown command sent")
     
     def ping(self):
         """Send PING command (same as headless_controller)"""
         ping = json.dumps({'topic':'/ping', 'value':1})
         self.n.publish(ping)
-        print("PING sent")
+        self._debug("PING sent")
     
     def notify(self):
         """Send notify command (same as headless_controller)"""
         note = json.dumps({'topic':'/notify', 'value':1})
         self.n.publish(note)
-        print("Notify sent")
+        self._debug("Notify sent")
     
     def choose(self, game):
         """Send game command (same as headless_controller)"""
         setup = json.dumps({'topic':'/game', 'value':game})
         self.n.publish(setup)
-        print(f"Game command sent: {game}")
+        self._debug(f"Game command sent: {game}")
     
     def _handle_device_response(self, mac, data, rssi):
         """Process device scan response (only used in scanning mode)"""
@@ -144,16 +148,16 @@ class SimpleHub:
         else:
             self.discovered_devices[mac_str] = device_info
         
-        print(f"Device found: {device_info['id']} (RSSI: {rssi})")
+        self._debug(f"Device found: {device_info['id']} (RSSI: {rssi})")
     
     def _send_serial(self, data):
         """Send JSON message to webapp via Serial"""
         try:
             msg = json.dumps(data)
-            print(msg)  # Print to stdout (USB Serial)
-            sys.stdout.flush()
+            print(msg)  # Print to stdout (USB Serial) - JSON only!
+            # Note: MicroPython's sys.stdout doesn't have flush(), but print() auto-flushes
         except Exception as e:
-            print(f"Serial send error: {e}", file=sys.stderr)
+            self._debug(f"Serial send error: {e}")
     
     def _check_serial_input(self):
         """Check for incoming Serial data (non-blocking)"""
@@ -175,7 +179,7 @@ class SimpleHub:
                         if line:
                             self._process_serial_command(line)
             except Exception as e:
-                print(f"Serial read error: {e}", file=sys.stderr)
+                self._debug(f"Serial read error: {e}")
     
     def _process_serial_command(self, line):
         """Process command from webapp"""
@@ -210,18 +214,18 @@ class SimpleHub:
                 })
             
             else:
-                print(f"Unknown command: {cmd_type}", file=sys.stderr)
+                self._debug(f"Unknown command: {cmd_type}")
         
         except Exception as e:
-            print(f"Command processing error: {e}", file=sys.stderr)
+            self._debug(f"Command processing error: {e}")
     
     def _start_scan(self, rssi_threshold):
         """Start device scan (only works in scanning_mode)"""
         if not self.scanning_mode:
-            print("Scanning disabled in transmit-only mode", file=sys.stderr)
+            self._debug("Scanning disabled in transmit-only mode")
             return
         
-        print(f"Starting device scan (RSSI: {rssi_threshold})")
+        self._debug(f"Starting device scan (RSSI: {rssi_threshold})")
         
         self.scanning = True
         self.scan_start_time = time.time()
@@ -251,15 +255,15 @@ class SimpleHub:
                 "list": device_list
             })
             
-            print(f"Scan complete: {len(device_list)} devices found")
+            self._debug(f"Scan complete: {len(device_list)} devices found")
     
     async def run(self):
         """Main event loop"""
         self.connect()
         self.running = True
         
-        print("Hub running. Press Ctrl+C to stop.")
-        print("Waiting for commands from webapp via Serial...")
+        self._debug("Hub running. Press Ctrl+C to stop.")
+        self._debug("Waiting for commands from webapp via Serial...")
         
         try:
             while self.running:
@@ -274,7 +278,7 @@ class SimpleHub:
                 await asyncio.sleep(0.01)
         
         except KeyboardInterrupt:
-            print("\nShutting down...")
+            self._debug("\nShutting down...")
         
         finally:
             self.close()
@@ -283,7 +287,7 @@ class SimpleHub:
         """Cleanup resources"""
         if self.n:
             self.n.close()
-        print("Hub stopped")
+        self._debug("Hub stopped")
 
 # Run hub
 # Set scanning_mode=True for full device scanning support

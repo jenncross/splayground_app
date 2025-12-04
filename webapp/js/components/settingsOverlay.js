@@ -1,7 +1,9 @@
 /**
  * Settings Overlay Component
- * Basic settings overlay with placeholder content
+ * App settings including device scanning toggle
  */
+
+import { state, setState } from '../state/store.js';
 
 export function createSettingsOverlay(onBack) {
     const overlay = document.createElement('div');
@@ -15,14 +17,44 @@ export function createSettingsOverlay(onBack) {
             <h2 class="text-lg font-semibold text-gray-900">Settings</h2>
         </div>
         <div class="flex-1 overflow-y-auto p-4">
-            <div class="text-center text-gray-400 py-12 text-sm">
-                Settings placeholder
+            <!-- Device Scanning Section -->
+            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
+                <div class="px-4 py-3 border-b border-gray-200">
+                    <h3 class="font-semibold text-gray-900">Device Management</h3>
+                </div>
+                <div class="p-4">
+                    <label class="flex items-center justify-between cursor-pointer">
+                        <div class="flex-1">
+                            <div class="font-medium text-gray-900">Enable Device Scanning</div>
+                            <div class="text-sm text-gray-500 mt-1">
+                                Show device list and scan for modules. Disable for faster command-only mode.
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <input type="checkbox" id="deviceScanningToggle" 
+                                   class="sr-only peer" 
+                                   ${state.deviceScanningEnabled ? 'checked' : ''}>
+                            <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </div>
+                    </label>
+                    <div class="mt-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
+                        <strong>Note:</strong> When disabled, modules don't respond to pings (faster). 
+                        When enabled, modules must implement device scan responses.
+                    </div>
+                </div>
             </div>
         </div>
     `;
     
-    // Event handler
+    // Event handlers
     overlay.querySelector('#backBtn').onclick = onBack;
+    
+    // Toggle handler
+    const toggle = overlay.querySelector('#deviceScanningToggle');
+    toggle.onchange = (e) => {
+        setState({ deviceScanningEnabled: e.target.checked });
+        console.log(`Device scanning ${e.target.checked ? 'enabled' : 'disabled'}`);
+    };
     
     return overlay;
 }

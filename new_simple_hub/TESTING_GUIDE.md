@@ -1,5 +1,21 @@
 # Simple Hub Testing Guide
 
+## ⚠️ Important: Serial Port Usage
+
+**Only ONE application can use a serial port at a time!**
+
+- **Development**: Use Thonny to upload/debug code → See hub output
+- **Testing**: Close Thonny → Connect browser → Test webapp commands
+- **Cannot do both simultaneously!**
+
+### Recommended Workflow:
+1. **Upload code** using Thonny
+2. **Test with Thonny** to verify hub is working
+3. **Stop Thonny** (red STOP button or close it)
+4. **Connect browser** to test webapp integration
+
+---
+
 ## Quick Start Testing
 
 ### 1. Hardware Setup
@@ -151,6 +167,32 @@ python3 -m http.server 8000
 - ⚠️  Requires modules to implement deviceScan response
 
 ## Common Issues
+
+### Issue: "Port Already In Use" or "Device Has Been Lost"
+**Problem:** Serial port is being used by another application
+
+**Solution:**
+1. **Close Thonny IDE**:
+   - Click red STOP button in Thonny
+   - Or close Thonny completely
+   - Wait 2 seconds for port to be released
+
+2. **Close Arduino IDE** (if open)
+
+3. **Close Serial Monitors**:
+   ```bash
+   # Kill screen sessions
+   screen -ls  # List sessions
+   screen -X -S [session] quit  # Kill specific session
+   
+   # Or just close terminal running minicom/screen
+   ```
+
+4. **Close Other Browser Tabs** using the serial port
+
+5. **Try Again**: Refresh webapp and reconnect
+
+**Note:** Only ONE application can use a serial port at a time!
 
 ### Issue: No serial port appears in browser
 **Solution:**

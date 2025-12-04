@@ -150,10 +150,27 @@ export function createConnectionModal() {
                 setState({ hubConnecting: false });
                 
                 // Provide helpful error messages
-                if (result.error && result.error.includes("serial")) {
-                    alert("Web Serial API not available. Please use Chrome or Edge browser on HTTPS or localhost.");
+                const error = result.error || "";
+                
+                if (error.includes("not available") || error.includes("serial")) {
+                    alert("❌ Web Serial API Not Available\n\n" +
+                          "Please use Chrome or Edge browser.\n" +
+                          "Note: HTTPS or localhost required.");
+                } else if (error.includes("in use") || error.includes("busy")) {
+                    alert("⚠️  Port Already In Use\n\n" +
+                          "The serial port is being used by another application.\n\n" +
+                          "Common causes:\n" +
+                          "• Thonny IDE is connected\n" +
+                          "• Arduino IDE has the port open\n" +
+                          "• Another browser tab is using it\n" +
+                          "• Serial monitor is running\n\n" +
+                          "Solution:\n" +
+                          "1. Close Thonny/Arduino IDE\n" +
+                          "2. Disconnect serial monitors\n" +
+                          "3. Try connecting again");
                 } else {
-                    alert(`Connection failed: ${result.error || "Unknown error"}`);
+                    alert(`Connection failed: ${error || "Unknown error"}\n\n` +
+                          "Check browser console for details.");
                 }
             }
         } catch (error) {

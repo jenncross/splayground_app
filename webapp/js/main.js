@@ -236,9 +236,13 @@ class App {
             });
             showToast(`Connected to ${mode === "serial" ? "USB Serial" : "Bluetooth"} hub`, "success");
             
-            // Auto-refresh devices on connection
-            console.log("Auto-refreshing devices on BLE connection...");
-            this.handleRefreshDevices();
+            // Auto-refresh devices on connection (only if scanning enabled)
+            if (state.deviceScanningEnabled) {
+                console.log("Auto-refreshing devices on connection...");
+                this.handleRefreshDevices();
+            } else {
+                console.log("Device scanning disabled - skipping auto-refresh");
+            }
         };
 
         // Direct function calls only - no event listeners needed
@@ -462,6 +466,7 @@ class App {
             () => this.handleSettingsClick(),
             state.isRefreshing, // Pass refresh state for loading animation
             state.pythonReady, // Pass Python initialization state
+            state.deviceScanningEnabled, // Pass device scanning toggle
         );
 
         const messageHistory = createMessageHistory(state.messageHistory, (message) => {
@@ -628,23 +633,27 @@ class App {
             return;
         }
 
-        // PRIORITY 2: Check if refresh is in progress
-        if (state.isRefreshing) {
+        // PRIORITY 2: Check if refresh is in progress (only if device scanning enabled)
+        if (state.deviceScanningEnabled && state.isRefreshing) {
             showToast("Please wait for device scan to complete", "warning");
             return;
         }
 
-        // PRIORITY 3: Log device availability (but don't block sending)
-        // Device scan can be unreliable, but commands may still work via ESP-NOW broadcast
-        const devices = getAvailableDevices();
-        console.log("=== SEND MESSAGE: Device check ===");
-        console.log("state.allDevices length:", state.allDevices?.length);
-        console.log("getAvailableDevices() length:", devices?.length);
-        console.log("All devices:", state.allDevices);
-        console.log("Available devices:", devices);
-        
-        if (devices.length === 0) {
-            console.log("⚠ No devices detected, but sending command anyway (broadcast mode)");
+        // PRIORITY 3: Log device availability (only if device scanning enabled)
+        let devices = [];
+        if (state.deviceScanningEnabled) {
+            devices = getAvailableDevices();
+            console.log("=== SEND MESSAGE: Device check ===");
+            console.log("state.allDevices length:", state.allDevices?.length);
+            console.log("getAvailableDevices() length:", devices?.length);
+            console.log("All devices:", state.allDevices);
+            console.log("Available devices:", devices);
+            
+            if (devices.length === 0) {
+                console.log("⚠ No devices detected, but sending command anyway (broadcast mode)");
+            }
+        } else {
+            console.log("=== SEND MESSAGE: Broadcast mode (device scanning disabled) ===");
         }
 
         // PRIORITY 4: Check message selection
@@ -663,7 +672,7 @@ class App {
         const newMessage = {
             id: Date.now(),
             command: state.currentMessage,
-            modules: devices.map((d) => d.name),
+            modules: state.deviceScanningEnabled ? devices.map((d) => d.name) : ["All Modules"],
             timestamp: now,
             displayTime: formatDisplayTime(now),
         };
@@ -674,10 +683,17 @@ class App {
             showCommandPalette: false,
         });
 
-        // SEND COMMAND VIA BLE (UPDATED)
+        // SEND COMMAND VIA SERIAL/BLE
         try {
-            // Convert range slider to RSSI threshold
-            const rssiThreshold = state.range === 100 ? "all" : Math.round(-30 - ((state.range - 1) / 98) * 60).toString();
+            // Use RSSI threshold only if device scanning is enabled, otherwise broadcast to all
+            let rssiThreshold;
+            if (state.deviceScanningEnabled) {
+                // Convert range slider to RSSI threshold
+                rssiThreshold = state.range === 100 ? "all" : Math.round(-30 - ((state.range - 1) / 98) * 60).toString();
+            } else {
+                // Broadcast mode - send to all modules
+                rssiThreshold = "all";
+            }
 
             const result = await PyBridgeToUse.sendCommandToHub(newMessage.command, rssiThreshold);
 
@@ -728,6 +744,12 @@ class App {
          * - Timeout per attempt: 7 seconds (hub scans for 5s + buffer for response)
          * - Silent retries (no user interruption)
          */
+        
+        // Skip device scanning if disabled in settings
+        if (!state.deviceScanningEnabled) {
+            console.log("Device scanning disabled - skipping PING");
+            return;
+        }
         
         // Prevent concurrent refreshes (but allow internal retries)
         if (state.isRefreshing && retryCount === 0) {
@@ -880,8 +902,48 @@ class App {
     }
 
     async handleHubConnect() {
-        // Show connection modal to let user choose BLE or Serial
-        showConnectionModal();
+        // Connect directly via Serial (no modal - BLE removed for now)
+        setState({ hubConnecting: true });
+        
+        try {
+            const result = await PyBridgeToUse.connectHubSerial();
+            
+            if (result.status === "success") {
+                console.log("✅ Serial connected:", result.device);
+                setState({
+                    hubConnected: true,
+                    hubDeviceName: result.device,
+                    hubConnectionMode: "serial",
+                    hubConnecting: false
+                });
+                
+                // Auto-refresh devices only if scanning is enabled
+                if (state.deviceScanningEnabled) {
+                    console.log("Auto-refreshing devices on connection...");
+                    await this.handleRefreshDevices();
+                }
+            } else if (result.status === "cancelled") {
+                console.log("❌ Serial connection cancelled by user");
+                setState({ hubConnecting: false });
+            } else {
+                console.error("❌ Serial connection failed:", result.error);
+                setState({ hubConnecting: false });
+                
+                // Show user-friendly error
+                const error = result.error || "";
+                if (error.includes("in use") || error.includes("busy")) {
+                    showToast("⚠️  Port in use - close Thonny/Arduino IDE and try again", "error");
+                } else if (error.includes("not available")) {
+                    showToast("❌ Use Chrome or Edge browser for USB connection", "error");
+                } else {
+                    showToast("Connection failed - check console for details", "error");
+                }
+            }
+        } catch (error) {
+            console.error("❌ Serial connection error:", error);
+            setState({ hubConnecting: false });
+            showToast("Connection error: " + error.message, "error");
+        }
     }
 
     async handleHubDisconnect() {

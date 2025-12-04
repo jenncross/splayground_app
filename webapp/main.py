@@ -520,18 +520,26 @@ async def connect_hub_serial():
             js_result.mode = "serial"
             return js_result
         else:
-            console.log("Serial connection cancelled or failed")
+            # Connection failed - check console output for specific error
+            console.log("Serial connection cancelled or failed - check console for details")
             js_result = Object.new()
-            js_result.status = "cancelled"
+            js_result.status = "error"
+            js_result.error = "Connection failed - check browser console for details"
             return js_result
     
     except Exception as e:
         error_msg = str(e)
-        console.log(f"Serial connection error: {error_msg}")
+        console.log(f"Serial connection exception: {error_msg}")
         
+        # Check for specific error types
         if "cancelled" in error_msg.lower() or "aborted" in error_msg.lower():
             js_result = Object.new()
             js_result.status = "cancelled"
+            return js_result
+        elif "in use" in error_msg.lower() or "busy" in error_msg.lower():
+            js_result = Object.new()
+            js_result.status = "error"
+            js_result.error = "Port in use - close Thonny/Arduino IDE and try again"
             return js_result
         else:
             js_result = Object.new()

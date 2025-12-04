@@ -82,9 +82,30 @@ class WebSerial:
             
         except Exception as e:
             error_msg = str(e)
+            
+            # User cancelled port selection
             if "cancelled" in error_msg.lower() or "aborted" in error_msg.lower():
                 print("User cancelled serial port selection")
                 return False
+            
+            # Port is already in use by another application
+            elif "in use" in error_msg.lower() or "busy" in error_msg.lower():
+                print("ERROR: Serial port is already in use!")
+                print("")
+                print("The port is likely being used by:")
+                print("  • Thonny IDE")
+                print("  • Arduino IDE")
+                print("  • Another browser tab")
+                print("  • Serial monitor (screen, minicom, etc.)")
+                print("")
+                print("To fix:")
+                print("  1. Close Thonny or other IDE")
+                print("  2. Disconnect any serial monitors")
+                print("  3. Close other browser tabs using the port")
+                print("  4. Try connecting again")
+                return False
+            
+            # Generic error
             else:
                 print(f"Serial connection error: {e}")
                 import traceback
@@ -132,8 +153,25 @@ class WebSerial:
         
         except Exception as e:
             error_msg = str(e)
+            
+            # Device was disconnected or lost
+            if "lost" in error_msg.lower() or "disconnected" in error_msg.lower():
+                print("")
+                print("⚠️  Serial connection lost!")
+                print("")
+                print("Possible causes:")
+                print("  • USB cable unplugged")
+                print("  • Hub powered off")
+                print("  • Another application opened the port (Thonny, Arduino IDE)")
+                print("  • Hub crashed or reset")
+                print("")
+                print("To reconnect:")
+                print("  1. Check USB cable is connected")
+                print("  2. Close any other applications using the port")
+                print("  3. Click 'Connect Hub' again")
+                print("")
             # Don't print error if connection was intentionally closed
-            if "cancel" not in error_msg.lower() and "abort" not in error_msg.lower():
+            elif "cancel" not in error_msg.lower() and "abort" not in error_msg.lower():
                 print(f"Read loop error: {e}")
                 import traceback
                 traceback.print_exc()

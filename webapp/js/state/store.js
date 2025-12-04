@@ -40,6 +40,9 @@ export const state = {
     showConnectionWarning: false,
     flashMessageBox: false,
 
+    // Device scanning toggle (webapp setting)
+    deviceScanningEnabled: false, // Set to false by default for command-only mode
+
     // Device state
     range: 40, // 0-100 slider value (40 = "Close")
     allDevices: [],
