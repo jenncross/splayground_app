@@ -1,4 +1,3 @@
-## DO NOT MODIFY
 from machine import Pin
 import network
 import espnow
@@ -32,9 +31,9 @@ class Now():
         try:
             mac, msg = remote_network.irecv()
             rssi = remote_network.peers_table
-            if mac != None and mac not in self.peers: #check if the peer has already been added
-                self.peers.append(mac)
-                self.now_network.add_peer(mac)
+            #if mac != None and mac not in self.peers: #check if the peer has already been added
+            #    self.peers.append(mac)
+            #    self.now_network.add_peer(mac)
             self.callback(msg, mac, rssi)
         except Exception as e:
             print(f"Receive Error: {e}")
@@ -43,11 +42,11 @@ class Now():
         # Set up the network and ESPNow
         self.wifi = network.WLAN(network.STA_IF) # ESP network type
         self.wifi.active(True)
-        if antenna: self.antenna()
         self.now_network = espnow.ESPNow()
         self.now_network.active(True)
         self.now_network.add_peer(self.everyone)
         self.now_network.irq(self.irq_receive)
+        if antenna: self.antenna()
         
         self.connected = True
 

@@ -23,8 +23,8 @@ class Clap(Game):
                 strength = max(0, min(s, 11))
                 print('strength = ',strength)
                 self.main.lights.all_off()
-                self.main.lights.all_on(RED, INTENSITY, 11-strength)
-                if strength > 6:
+                self.main.lights.all_on(RED, INTENSITY, 12-strength)
+                if strength < 6:
                     self.main.buzzer.play(440)
                     time.sleep(1)
                     self.main.buzzer.stop()

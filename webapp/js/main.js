@@ -50,6 +50,7 @@ import { createSettingsOverlay } from "./components/settingsOverlay.js";
 import { showToast } from "./components/toast.js";
 import { createBrowserCompatibilityModal, isBrowserCompatible } from "./components/browserCompatibilityModal.js";
 import { createPermissionBlockedModal, isPermissionBlockedError } from "./components/permissionBlockedModal.js";
+import { createErrorDetailModal, showSerialConnectionLostError, showPortInUseError } from "./components/errorDetailModal.js";
 
 /**
  * Unified error handler for Python backend responses.
@@ -302,6 +303,12 @@ class App {
                 hubConnecting: false,
                 isRefreshing: false, // Cancel any pending device scans
             });
+        };
+        
+        // Callback for showing detailed error modals (called from Python)
+        window.showSerialConnectionLostError = () => {
+            console.log("Serial connection lost - showing error modal");
+            showSerialConnectionLostError();
         };
 
         // Direct function calls only - no event listeners needed
@@ -593,6 +600,18 @@ class App {
         } else if (this.components.permissionBlockedModal) {
             this.components.permissionBlockedModal.remove();
             this.components.permissionBlockedModal = null;
+        }
+        
+        // Show error detail modal if needed (for detailed error messages)
+        if (state.showErrorDetailModal && state.errorDetail) {
+            if (this.components.errorDetailModal) {
+                this.components.errorDetailModal.remove();
+            }
+            this.components.errorDetailModal = createErrorDetailModal(state.errorDetail);
+            this.container.appendChild(this.components.errorDetailModal);
+        } else if (this.components.errorDetailModal) {
+            this.components.errorDetailModal.remove();
+            this.components.errorDetailModal = null;
         }
 
         // Initialize Lucide icons
@@ -978,7 +997,8 @@ class App {
                     console.log("⚠️ Permission blocked - showing troubleshooting modal");
                     setState({ showPermissionBlockedModal: true });
                 } else if (result.error && result.error.includes("in use") || result.error && result.error.includes("busy")) {
-                    showToast("⚠️  Port in use - close Thonny/Arduino IDE and try again", "error");
+                    // Show detailed error modal for port in use (not just a toast)
+                    showPortInUseError();
                 } else if (result.error && result.error.includes("not available")) {
                     showToast("❌ Use Chrome or Edge browser for USB connection", "error");
                 } else {

@@ -68,5 +68,9 @@ class Buzzer:
     def close(self):
         self.buzzer.deinit()
 
-def hibernate():
-    deepsleep()
+class Hibernate:
+    def __init__(self):
+        pass
+    
+    def hibernate(self):
+        deepsleep()

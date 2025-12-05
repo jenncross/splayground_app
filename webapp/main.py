@@ -41,7 +41,10 @@ ble = WebBLE()  # Create BLE instance
 # Import WebSerial class
 from mpy.webSerial import code as serial_code
 exec(serial_code)  # This executes the code and creates the WebSerial class
-serial = WebSerial()  # Create Serial instance
+serial = WebSerial()  # Create Serial instance (version printed in __init__)
+
+# Set up serial callbacks (will be properly assigned after functions are defined)
+# These are forward-declared here and assigned at the bottom of the file
 
 # Connection state
 ble_connected = False
@@ -71,7 +74,7 @@ def parse_hub_response(data):
     Parameters:
     -----------
     data : str
-        Raw JSON string from hub
+        Raw JSON string from hub (should already be filtered to only JSON messages)
         
     Returns:
     --------
@@ -79,27 +82,21 @@ def parse_hub_response(data):
         
     Error Handling:
     - Single repair attempt for truncated JSON
-    - Logs all parsing failures for debugging
-    - Validates required fields before returning
+    - Minimal logging (detailed errors handled by caller)
     """
     try:
         # Try to parse JSON normally first
         parsed = json.loads(data)
-        console.log(f"Successfully parsed JSON: {parsed}")
         return parsed
     except Exception as e:
-        console.log(f"JSON parsing failed: {e}")
-        
         # Single repair attempt for truncated JSON
         if "Unterminated string" in str(e) or "Expecting" in str(e):
-            console.log("Attempting to fix truncated JSON...")
             try:
                 fixed_data = data + '"]}'
                 parsed = json.loads(fixed_data)
-                console.log("Successfully fixed truncated JSON")
+                console.log("⚠️ Fixed truncated JSON from hub")
                 return parsed
-            except Exception as fix_error:
-                console.log(f"Failed to fix JSON: {fix_error}")
+            except:
                 return None
         else:
             return None
@@ -110,17 +107,29 @@ def process_complete_message(message_data):
     
     This is called once we've reassembled a complete framed message.
     It parses the JSON and updates the UI accordingly.
+    
+    The hub sends two types of messages:
+    1. JSON data (starts with '{') - commands, acks, device lists
+    2. Plain text debug messages - hub's internal logging
     """
     global devices
     
-    console.log("=== PROCESSING COMPLETE MESSAGE ===")
-    console.log(f"Message length: {len(message_data)}")
+    # Quick check: Is this JSON or a debug message?
+    message_data = message_data.strip()
+    
+    if not message_data.startswith('{'):
+        # Not JSON - this is a debug/print statement from the hub
+        console.info(f"📡 Hub: {message_data}")
+        return
+    
+    # It's JSON - try to parse it
+    console.log("=== PROCESSING HUB JSON ===")
     console.log(f"Message: {message_data}")
     
     # Parse JSON using centralized function
     parsed = parse_hub_response(message_data)
     if not parsed:
-        console.log("Failed to parse hub data - skipping")
+        console.error(f"❌ Failed to parse hub JSON: {message_data}")
         return
     
     # Validate required fields
@@ -569,13 +578,32 @@ def on_serial_data(data):
     """
     Handle incoming Serial data
     
-    Serial data is line-delimited JSON, same format as BLE.
-    We can reuse the BLE data processing logic.
+    Serial data is line-delimited, can be:
+    - JSON messages (starting with '{')
+    - Debug/print statements from hub
     """
-    console.log(f"Serial RX: {data}")
-    
-    # Reuse BLE data processing (it handles JSON parsing and device updates)
+    # Process the message (it will handle JSON vs debug message filtering)
     process_complete_message(data)
+
+def on_serial_connection_lost():
+    """
+    Handle unexpected serial connection loss.
+    
+    This is called by webSerial.py when the serial connection is lost
+    unexpectedly (not from user-initiated disconnect).
+    """
+    global serial_connected, hub_device_name, hub_connection_mode
+    
+    console.log("⚠️ Serial connection lost - updating backend state")
+    console.log(f"BEFORE: serial_connected={serial_connected}, mode={hub_connection_mode}")
+    
+    # Update Python backend state immediately
+    serial_connected = False
+    hub_device_name = None
+    hub_connection_mode = None
+    
+    console.log(f"AFTER: serial_connected={serial_connected}, mode={hub_connection_mode}")
+    console.log(f"serial.is_connected() = {serial.is_connected()}")
 
 async def send_command_to_hub(command, rssi_threshold="all"):
     """
@@ -611,6 +639,7 @@ async def send_command_to_hub(command, rssi_threshold="all"):
     # Check connection based on mode
     if hub_connection_mode == "serial":
         if not serial.is_connected():
+            console.log("❌ Serial not connected - cannot send command")
             js_result = Object.new()
             js_result.status = "error"
             js_result.error = "Not connected to hub"
@@ -774,6 +803,9 @@ window.send_command_to_hub = create_proxy(send_command_to_hub)
 window.refresh_devices = create_proxy(refresh_devices)
 window.refresh_devices_from_hub = create_proxy(refresh_devices_from_hub)
 
+# Set up serial connection lost callback
+serial.on_connection_lost_callback = on_serial_connection_lost
+
 # Python backend is ready
 
-console.log("Python backend initialized!")
+console.log("✅ Python backend initialized [v2024.12.05]")

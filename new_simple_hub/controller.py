@@ -1,5 +1,4 @@
 from machine import SoftI2C, Pin, ADC
-import ssd1306
 import time, json
 import ubinascii
 
@@ -7,68 +6,16 @@ import  utilities.now as now
 
 ROW = 10
 
-import ledmatrix
-
-class Controller:
-    # ╔═══════════════════════════════════════════════════════════════════╗
-    # ║ MODIFICATION: Added two new parameters:                           ║
-    # ║ - enable_hardware: Set False to use as ESP-NOW library only       ║
-    # ║ - external_antenna: Set True for ESP32-C6 with external antenna   ║
-    # ╚═══════════════════════════════════════════════════════════════════╝
-    def __init__(self, enable_hardware=True, external_antenna=False):
-        # Initialize all hardware attributes to None first
-        self.display = None
-        self.button_up = None
-        self.button_select = None
-        self.button_down = None
-        self.pot = None
-        self.row = 1
-        
-        # Store antenna configuration for connect() method
-        self.external_antenna = external_antenna
-        
-        # Only initialize hardware if requested
-        if enable_hardware:
-            try:
-                self.display = Display()
-                self.display.clear_screen()
-                self.display.add_text('1: Music')
-                self.display.add_text('2: Shake')
-                self.display.add_text('3: Hot Cold')
-                self.display.add_text('4: Jump')
-                self.display.add_text('5: Clap')
-                self.display.add_text('6: Rainbow')
-                self.display.add_text('7: Shutdown')
-                
-                self.display.last_row = None
-                self.row = 1
-
-                self.button_up = Button(10)
-                self.button_select = Button(9)
-                self.button_down = Button(8)
-                self.pot = ADC(Pin(3))
-                self.pot.atten(ADC.ATTN_11DB) # the pin expects a voltage range up to 3.3V
-            except Exception as e:
-                print(f"Hardware initialization failed: {e}")
-                # Continue without hardware - ESP-NOW methods will still work
-        
+class Control:
     def connect(self):
         def my_callback(msg, mac, rssi):
             if not ('/ping' in msg):
                 print(mac, msg, rssi)
             #self.n.publish(msg, mac)
 
-        # ╔═══════════════════════════════════════════════════════════════════╗
-        # ║ MODIFICATION: C6 external antenna is configured AFTER             ║
-        # ║ connect() for proper timing (Pin 3 LOW, 100ms, Pin 14 HIGH)       ║
-        # ╚═══════════════════════════════════════════════════════════════════╝
         self.n = now.Now(my_callback)
         self.n.connect(False)
         self.mac = self.n.wifi.config('mac')
-        
-        if self.external_antenna:
-            self.n.antenna()  # Configure C6 external antenna
-        
         print(self.mac)
         
     def shutdown(self):
@@ -94,8 +41,12 @@ class Controller:
         setup = json.dumps({'topic':'/game', 'value':game})
         self.n.publish(setup)
 
+
 class Display:
     def __init__(self):
+        import ssd1306
+        import ledmatrix
+        
         i2c = SoftI2C(scl = Pin(7), sda = Pin(6))
         self.display = ssd1306.SSD1306_I2C(128, 64,i2c)
         self.leds = ledmatrix.LEDMATRIX(i2c)
@@ -142,10 +93,27 @@ class Button:
     def close(self):
         self.button.irq = None
 
+class Controller(Control):
+    def __init__(self):
+        self.display = Display()
+        self.display.clear_screen()
+        self.display.add_text('1: Music')
+        self.display.add_text('2: Shake')
+        self.display.add_text('3: Hot Cold')
+        self.display.add_text('4: Jump')
+        self.display.add_text('5: Clap')
+        self.display.add_text('6: Rainbow')
+        self.display.add_text('7: Shutdown')
+        
+        self.display.last_row = None
+        self.row = 1
 
-# ╔═══════════════════════════════════════════════════════════════════════╗
-# ║ MODIFICATION: Wrapped in __name__ guard to allow import as library    ║
-# ╚═══════════════════════════════════════════════════════════════════════╝
+        self.button_up = Button(10)
+        self.button_select = Button(9)
+        self.button_down = Button(8)
+        self.pot = ADC(Pin(3))
+        self.pot.atten(ADC.ATTN_11DB) # the pin expects a voltage range up to 3.3V
+
 if __name__ == '__main__':
     controller = Controller()
 

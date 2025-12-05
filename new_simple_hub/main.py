@@ -14,7 +14,7 @@ import json
 import time
 import asyncio
 import utilities.now as now
-import utilities.base64 as base64
+from controller import Control
 
 # Try to import display support
 ROW_HEIGHT = 10  # Pixels per line on 128x64 display (can fit 6 lines)
@@ -38,206 +38,30 @@ GAME_MAP = {
     "Off": 6,          # Hibernate game → deep sleep
 }
 
-class SimpleHub:
-    """Simple USB Serial to ESP-NOW bridge hub"""
+class SerialBridge:
+    """Handle USB Serial communication with webapp"""
     
-    def __init__(self, scanning_mode=False):
+    def __init__(self, command_callback, debug_callback):
         """
-        Initialize hub
+        Initialize serial bridge
         
         Args:
-            scanning_mode: If True, handle PING responses for device scanning.
-                          If False, transmit-only mode (like headless controller).
+            command_callback: Function to call with (cmd_type, cmd_data)
+            debug_callback: Function to call for debug messages
         """
-        self.scanning_mode = scanning_mode
-        self.n = None
-        self.running = False
-        
-        # Device scanning state (only used if scanning_mode=True)
-        self.scanning = False
-        self.scan_start_time = 0
-        self.scan_timeout = 5.0  # 5 seconds
-        self.discovered_devices = {}  # MAC -> device info
-        self.scan_rssi_threshold = "all"
-        
-        # Serial input buffer
-        self.serial_buffer = ""
-        
-        # Display setup (try/except to handle missing display)
-        self.display = None
-        self.display_lines = []  # Rolling buffer of last 6 debug messages
-        self._init_display()
-        
-        self._debug("Hub Init")
+        self.command_callback = command_callback
+        self.debug = debug_callback
+        self.buffer = ""
     
-    def _init_display(self):
-        """Attempt to initialize SSD1306 display with try/except"""
-        if not DISPLAY_AVAILABLE:
-            return
-        
-        try:
-            # Try to initialize I2C and display (using same pins as headless_controller)
-            i2c = I2C(scl=Pin(23), sda=Pin(22))
-            self.display = ssd1306.SSD1306_I2C(128, 64, i2c)
-            self.display.fill(0)
-            self.display.show()
-            # Show initial message
-            self.display.text("Hub Starting...", 2, 2, 1)
-            self.display.show()
-            print("Display initialized successfully", file=sys.stderr)
-        except Exception as e:
-            # Display not available or failed to initialize - continue without it
-            self.display = None
-            print(f"Display not available: {e}", file=sys.stderr)
-    
-    def _update_display(self, msg):
-        """Update display with new debug message (rolling buffer)"""
-        if not self.display:
-            return
-        
-        try:
-            # Truncate message to fit display width (128 pixels, ~21 chars at 6x8 font)
-            max_chars = 20
-            if len(msg) > max_chars:
-                msg = msg[:max_chars-3] + "..."
-            
-            # Add to rolling buffer
-            self.display_lines.append(msg)
-            
-            # Keep only last MAX_DISPLAY_LINES messages
-            if len(self.display_lines) > MAX_DISPLAY_LINES:
-                self.display_lines = self.display_lines[-MAX_DISPLAY_LINES:]
-            
-            # Clear and redraw all lines
-            self.display.fill(0)
-            y = 2
-            for line in self.display_lines:
-                self.display.text(line, 2, y, 1)
-                y += ROW_HEIGHT
-            
-            self.display.show()
-        except Exception as e:
-            # If display update fails, just continue without it
-            print(f"Display update error: {e}", file=sys.stderr)
-            self.display = None
-    
-    def _debug(self, msg):
-        """Print debug message to stderr (not interfering with JSON on stdout)"""
-        print(msg, file=sys.stderr)
-        # Also update display if available
-        if self.display:
-            self._update_display(msg)
-    
-    def connect(self):
-        """Initialize ESP-NOW connection following plushie pattern"""
-        self._debug("Connecting")
-        
-        # Define callback (simplified like headless_controller)
-        def my_callback(msg, mac, rssi):
-            """ESP-NOW message callback - simple like headless_controller"""
-            # Direct string check like headless_controller
-            if '/ping' in msg:
-                mac_str = ':'.join(f'{b:02x}' for b in mac)
-                #self._debug(f"PING response from {mac_str}, RSSI: {rssi}")
-            
-            # Only process device scan in scanning mode
-            if self.scanning_mode and self.scanning:
-                if '/deviceScan' in msg:
-                    try:
-                        data = json.loads(msg)
-                        self._handle_device_response(mac, data, rssi)
-                    except Exception as e:
-                        self._debug("Scan Err")
-        
-        # Initialize ESP-NOW following plushie pattern
-        self.n = now.Now(my_callback)
-        self.n.connect()
-        self.mac = self.n.wifi.config('mac')
-        mac_str = ':'.join(f'{b:02x}' for b in self.mac)
-        self._debug(f"MAC:{mac_str[-8:]}")
-        self.n.antenna()  # Explicit antenna() call for C6 external antenna
-        self._debug("NOW Ready")
-        
-        # Send ready message to webapp via Serial
-        self._send_serial({
-            "type": "ready", 
-            "mode": "scanning" if self.scanning_mode else "transmit_only",
-            "mac": mac_str
-        })
-    
-    def shutdown(self):
-        """Send shutdown command (same as headless_controller)"""
-        stop = json.dumps({'topic':'/game', 'value':-1})
-        self.n.publish(stop)
-        self._debug("Gm:Off")
-    
-    def ping(self):
-        """Send PING command (same as headless_controller)"""
-        ping = json.dumps({'topic':'/ping', 'value':1})
-        self.n.publish(ping)
-        self._debug("PING->Devs")
-    
-    def notify(self):
-        """Send notify command (same as headless_controller)"""
-        note = json.dumps({'topic':'/notify', 'value':1})
-        self.n.publish(note)
-        self._debug("Notif->Devs")
-    
-    def choose(self, game):
-        """Send game command - matches headless_controller exactly"""
-        # First: Send gem message with base64-encoded MAC
-        encoded_bytes = base64.b64encode(self.mac)
-        encoded_string = encoded_bytes.decode('ascii')
-        mac = json.dumps({'topic':'/gem', 'value':encoded_string})
-        self.n.publish(mac)
-        self._debug("Gem->Devs")
-        
-        # Wait 1 second (critical timing from headless_controller)
-        time.sleep(1)
-        
-        # Then: Send game command
-        setup = json.dumps({'topic':'/game', 'value':game})
-        self.n.publish(setup)
-        self._debug(f"Val:{game}")
-    
-    def _handle_device_response(self, mac, data, rssi):
-        """Process device scan response (only used in scanning mode)"""
-        # Convert MAC to string
-        mac_str = ':'.join(f'{b:02x}' for b in mac)
-        
-        # Apply RSSI filtering if needed
-        if self.scan_rssi_threshold != "all":
-            if rssi < self.scan_rssi_threshold:
-                return  # Too weak, ignore
-        
-        # Extract device info
-        device_info = {
-            "id": data.get('id', mac_str),
-            "mac": mac_str,
-            "rssi": rssi,
-            "battery": data.get('battery', 0),
-            "type": data.get('type', 'unknown')
-        }
-        
-        # Deduplicate by MAC (keep strongest signal)
-        if mac_str in self.discovered_devices:
-            if rssi > self.discovered_devices[mac_str]['rssi']:
-                self.discovered_devices[mac_str] = device_info
-        else:
-            self.discovered_devices[mac_str] = device_info
-        
-        self._debug(f"Dev:{rssi}dB")
-    
-    def _send_serial(self, data):
+    def send(self, data):
         """Send JSON message to webapp via Serial"""
         try:
             msg = json.dumps(data)
             print(msg)  # Print to stdout (USB Serial) - JSON only!
-            # Note: MicroPython's sys.stdout doesn't have flush(), but print() auto-flushes
         except Exception as e:
-            self._debug("Ser TX Err")
+            self.debug("Ser TX Err")
     
-    def _check_serial_input(self):
+    def check_input(self):
         """Check for incoming Serial data (non-blocking)"""
         # Use select to check if stdin has data
         rlist, _, _ = select.select([sys.stdin], [], [], 0)
@@ -247,98 +71,161 @@ class SimpleHub:
                 # Read available data
                 chunk = sys.stdin.read(1)
                 if chunk:
-                    self.serial_buffer += chunk
+                    self.buffer += chunk
                     
                     # Check for complete lines
-                    while '\n' in self.serial_buffer:
-                        line, self.serial_buffer = self.serial_buffer.split('\n', 1)
+                    while '\n' in self.buffer:
+                        line, self.buffer = self.buffer.split('\n', 1)
                         line = line.strip()
                         
                         if line:
-                            self._process_serial_command(line)
+                            self._process_command(line)
             except Exception as e:
-                self._debug("Ser RX Err")
+                self.debug("Ser RX Err")
     
-    def _process_serial_command(self, line):
-        """Process command from webapp"""
+    def _process_command(self, line):
+        """Parse JSON command and call callback"""
         try:
             cmd = json.loads(line)
             cmd_type = cmd.get("cmd")
-            
-            if cmd_type == "PING" and self.scanning_mode:
-                # Start device scan
-                rssi = cmd.get("rssi", "all")
-                self._start_scan(rssi)
-            
-            elif cmd_type in GAME_MAP:
-                # Send game command using choose() method
-                game_num = GAME_MAP[cmd_type]
-                # Show game name (truncate to fit 12 char limit: "Gm:" + 9 chars)
-                game_display = cmd_type[:9] if len(cmd_type) <= 9 else cmd_type[:8] + "."
-                self._debug(f"Gm:{game_display}")
-                self.choose(game_num)
-                
-                # Send acknowledgment to webapp
-                self._send_serial({
-                    "type": "ack",
-                    "command": cmd_type,
-                    "status": "sent"
-                })
-            
-            elif cmd_type == "Off":
-                # Use shutdown() method
-                self.shutdown()
-                self._send_serial({
-                    "type": "ack",
-                    "command": "Off",
-                    "status": "sent"
-                })
-            
-            else:
-                # Show unknown command (truncate to fit)
-                unk_display = str(cmd_type)[:8] if cmd_type else "None"
-                self._debug(f"Unk:{unk_display}")
-        
+            self.command_callback(cmd_type, cmd)
         except Exception as e:
-            self._debug("CMD Err")
+            self.debug("CMD Err")
+
+class HubDisplay:
+    """Simple rolling display for hub debug messages"""
     
-    def _start_scan(self, rssi_threshold):
-        """Start device scan (only works in scanning_mode)"""
-        if not self.scanning_mode:
-            self._debug("Scan Off")
+    def __init__(self):
+        """Initialize SSD1306 display if available"""
+        self.display = None
+        self.lines = []
+        
+        if not DISPLAY_AVAILABLE:
             return
         
-        self._debug("Scan Start")
-        
-        self.scanning = True
-        self.scan_start_time = time.time()
-        self.discovered_devices = {}
-        self.scan_rssi_threshold = rssi_threshold
-        
-        # Send PING using ping() method
-        self.ping()
+        try:
+            # Initialize I2C and display
+            i2c = I2C(scl=Pin(23), sda=Pin(22))
+            self.display = ssd1306.SSD1306_I2C(128, 64, i2c)
+            self.display.fill(0)
+            self.display.text("Hub Starting...", 2, 2, 1)
+            self.display.show()
+            print("Display initialized successfully", file=sys.stderr)
+        except Exception as e:
+            self.display = None
+            print(f"Display not available: {e}", file=sys.stderr)
     
-    def _check_scan_timeout(self):
-        """Check if scan has timed out and send results"""
-        if not self.scanning:
+    def update(self, msg):
+        """Update display with new message (rolling buffer)"""
+        if not self.display:
             return
         
-        elapsed = time.time() - self.scan_start_time
+        try:
+            # Truncate message to fit display width (~20 chars at 6x8 font)
+            if len(msg) > 20:
+                msg = msg[:17] + "..."
+            
+            # Add to rolling buffer
+            self.lines.append(msg)
+            if len(self.lines) > MAX_DISPLAY_LINES:
+                self.lines = self.lines[-MAX_DISPLAY_LINES:]
+            
+            # Clear and redraw all lines
+            self.display.fill(0)
+            y = 2
+            for line in self.lines:
+                self.display.text(line, 2, y, 1)
+                y += ROW_HEIGHT
+            
+            self.display.show()
+        except Exception as e:
+            # If display update fails, disable it
+            print(f"Display update error: {e}", file=sys.stderr)
+            self.display = None
+    
+    def close(self):
+        """Display shutdown message"""
+        if self.display:
+            try:
+                self.display.fill(0)
+                self.display.text("Hub Stopped", 2, 28, 1)
+                self.display.show()
+            except:
+                pass
+
+class SimpleHub(Control):
+    """Simple USB Serial to ESP-NOW bridge hub - inherits ESP-NOW methods from Control"""
+    
+    def __init__(self):
+        """Initialize simple hub - transmit-only, no device scanning"""
+        self.running = False
         
-        if elapsed >= self.scan_timeout:
-            # Scan complete
-            self.scanning = False
+        # Display for debug messages
+        self.display = HubDisplay()
+        
+        # Serial bridge for webapp communication
+        self.serial = SerialBridge(
+            command_callback=self._handle_command,
+            debug_callback=self._debug
+        )
+        
+        self._debug("Hub Init")
+    
+    def _debug(self, msg):
+        """Print debug message to stderr and update display"""
+        print(msg, file=sys.stderr)
+        self.display.update(msg)
+    
+    def connect(self):
+        """Initialize ESP-NOW using Control.connect() + C6 external antenna"""
+        self._debug("Connecting")
+        
+        # Call parent's connect() to set up ESP-NOW
+        super().connect()
+        
+        # Add C6 external antenna configuration
+        self.n.antenna()
+        
+        mac_str = ':'.join(f'{b:02x}' for b in self.mac)
+        self._debug(f"MAC:{mac_str[-8:]}")
+        self._debug("NOW Ready")
+        
+        # Send ready message to webapp via Serial
+        self.serial.send({
+            "type": "ready",
+            "mac": mac_str
+        })
+    
+    def _handle_command(self, cmd_type, cmd):
+        """Handle command from webapp (callback from SerialBridge)"""
+        if cmd_type in GAME_MAP:
+            # Send game command using inherited choose() method
+            game_num = GAME_MAP[cmd_type]
+            # Show game name (truncate to fit 12 char limit: "Gm:" + 9 chars)
+            game_display = cmd_type[:9] if len(cmd_type) <= 9 else cmd_type[:8] + "."
+            self._debug(f"Gm:{game_display}")
+            self.choose(game_num)
             
-            # Format device list
-            device_list = list(self.discovered_devices.values())
-            
-            # Send to webapp
-            self._send_serial({
-                "type": "devices",
-                "list": device_list
+            # Send acknowledgment to webapp
+            self.serial.send({
+                "type": "ack",
+                "command": cmd_type,
+                "status": "sent"
             })
-            
-            self._debug(f"Found:{len(device_list)}")
+        
+        elif cmd_type == "Off":
+            # Use inherited shutdown() method
+            self.shutdown()
+            self.serial.send({
+                "type": "ack",
+                "command": "Off",
+                "status": "sent"
+            })
+        
+        else:
+            # Show unknown command (truncate to fit)
+            unk_display = str(cmd_type)[:8] if cmd_type else "None"
+            self._debug(f"Unk:{unk_display}")
     
     async def run(self):
         """Main event loop"""
@@ -351,11 +238,7 @@ class SimpleHub:
         try:
             while self.running:
                 # Check for Serial commands
-                self._check_serial_input()
-                
-                # Check scan timeout (scanning mode only)
-                if self.scanning_mode:
-                    self._check_scan_timeout()
+                self.serial.check_input()
                 
                 # Small delay for responsiveness
                 await asyncio.sleep(0.01)
@@ -370,17 +253,9 @@ class SimpleHub:
         """Cleanup resources"""
         if self.n:
             self.n.close()
-        if self.display:
-            try:
-                self.display.fill(0)
-                self.display.text("Hub Stopped", 2, 28, 1)
-                self.display.show()
-            except:
-                pass
         self._debug("Stopped")
+        self.display.close()
 
-# Run hub
-# Set scanning_mode=True for full device scanning support
-# Set scanning_mode=False for transmit-only mode (like headless controller)
-hub = SimpleHub(scanning_mode=False)
+# Run simple hub (transmit-only, no device scanning)
+hub = SimpleHub()
 asyncio.run(hub.run())

@@ -122,11 +122,11 @@ class Stuffie:
                     print('Game ',value)
                     if game >= 0:
                         await self.stop_game(game)
-                        await self.lights.animate(RED,timeout = 0)
+                        await self.lights.animate(RED,timeout = 0, speed = 0.03)
                     #self.game = self.value
                     if value >= 0:
                         print('starting game ',value)
-                        await self.lights.animate(COLORS[value],timeout = 0)
+                        await self.lights.animate(COLORS[value],timeout = 0, speed = 0.03)
                         self.start_game(value)
                 else:
                     print('notifying')

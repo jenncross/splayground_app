@@ -42,11 +42,11 @@ class Now():
         # Set up the network and ESPNow
         self.wifi = network.WLAN(network.STA_IF) # ESP network type
         self.wifi.active(True)
-        if antenna: self.antenna()
         self.now_network = espnow.ESPNow()
         self.now_network.active(True)
         self.now_network.add_peer(self.everyone)
         self.now_network.irq(self.irq_receive)
+        if antenna: self.antenna()
         
         self.connected = True
 

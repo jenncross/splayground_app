@@ -37,7 +37,9 @@ class WebSerial:
         self.reader = None
         self.writer = None
         self.on_data_callback = None
+        self.on_connection_lost_callback = None
         self.read_loop_task = None
+        print("🔌 WebSerial initialized [v2024.12.05] - disconnect detection enabled")
         
     async def connect(self):
         """
@@ -128,7 +130,41 @@ class WebSerial:
                 
                 # Check if reader was closed
                 if result.done:
-                    print("Serial reader closed")
+                    print("🔴 Serial reader closed - connection lost!")
+                    
+                    # Clean up serial port state immediately
+                    print("🔧 Cleaning up serial port state...")
+                    self.port = None
+                    self.reader = None
+                    self.writer = None
+                    self.read_loop_task = None
+                    print(f"Serial state cleaned: port={self.port}, reader={self.reader}")
+                    print(f"is_connected() = {self.is_connected()}")
+                    
+                    # Call Python backend callback to update state
+                    print("Calling Python backend callback...")
+                    if self.on_connection_lost_callback:
+                        self.on_connection_lost_callback()
+                        print("Python backend callback completed")
+                    else:
+                        print("WARNING: No on_connection_lost_callback set!")
+                    
+                    # Show detailed error modal to user
+                    print("Showing error modal...")
+                    if hasattr(window, 'showSerialConnectionLostError'):
+                        window.showSerialConnectionLostError()
+                        print("Error modal shown")
+                    else:
+                        print("WARNING: showSerialConnectionLostError not available")
+                    
+                    # Trigger hub disconnected callback to update UI state
+                    print("Calling onHubDisconnected...")
+                    if hasattr(window, 'onHubDisconnected'):
+                        window.onHubDisconnected()
+                        print("onHubDisconnected completed")
+                    else:
+                        print("WARNING: onHubDisconnected not available")
+                    
                     break
                 
                 # Decode bytes to text
@@ -154,8 +190,20 @@ class WebSerial:
         except Exception as e:
             error_msg = str(e)
             
-            # Device was disconnected or lost
-            if "lost" in error_msg.lower() or "disconnected" in error_msg.lower():
+            # DEBUG: Print the actual error to understand what we're catching
+            print(f"DEBUG: Read loop exception caught: '{error_msg}'")
+            print(f"DEBUG: Exception type: {type(e).__name__}")
+            
+            # Device was disconnected or lost - check for various error conditions
+            is_disconnect_error = (
+                "lost" in error_msg.lower() or 
+                "disconnected" in error_msg.lower() or
+                "device" in error_msg.lower() or
+                "port" in error_msg.lower() or
+                not error_msg  # Empty error message often means disconnect
+            )
+            
+            if is_disconnect_error:
                 print("")
                 print("⚠️  Serial connection lost!")
                 print("")
@@ -170,6 +218,40 @@ class WebSerial:
                 print("  2. Close any other applications using the port")
                 print("  3. Click 'Connect Hub' again")
                 print("")
+                
+                # Clean up serial port state immediately
+                print("🔧 Cleaning up serial port state...")
+                self.port = None
+                self.reader = None
+                self.writer = None
+                self.read_loop_task = None
+                print(f"Serial state cleaned: port={self.port}, reader={self.reader}")
+                print(f"is_connected() = {self.is_connected()}")
+                
+                # Call Python backend callback to update state
+                print("Calling Python backend callback...")
+                if self.on_connection_lost_callback:
+                    self.on_connection_lost_callback()
+                    print("Python backend callback completed")
+                else:
+                    print("WARNING: No on_connection_lost_callback set!")
+                
+                # Show detailed error modal to user
+                print("Showing error modal...")
+                if hasattr(window, 'showSerialConnectionLostError'):
+                    window.showSerialConnectionLostError()
+                    print("Error modal shown")
+                else:
+                    print("WARNING: showSerialConnectionLostError not available")
+                
+                # Trigger hub disconnected callback to update UI state
+                print("Calling onHubDisconnected...")
+                if hasattr(window, 'onHubDisconnected'):
+                    window.onHubDisconnected()
+                    print("onHubDisconnected completed")
+                else:
+                    print("WARNING: onHubDisconnected not available")
+                    
             # Don't print error if connection was intentionally closed
             elif "cancel" not in error_msg.lower() and "abort" not in error_msg.lower():
                 print(f"Read loop error: {e}")
@@ -186,8 +268,11 @@ class WebSerial:
         Returns:
             bool: True if sent successfully, False otherwise
         """
-        if not self.writer:
+        print(f"DEBUG: send() called - writer={self.writer}, port={self.port}")
+        
+        if not self.writer or not self.port:
             print("ERROR: Not connected to serial port!")
+            print(f"  writer={self.writer}, port={self.port}")
             return False
         
         try:
@@ -198,7 +283,8 @@ class WebSerial:
             # Write to port
             await self.writer.write(data)
             
-            print(f"Serial TX: {message}")
+            # Only log in debug mode - comment out for production
+            # print(f"Serial TX: {message}")
             return True
             
         except Exception as e:
