@@ -37,24 +37,24 @@ export function createBrowserCompatibilityModal() {
                 <!-- Description -->
                 <p class="text-sm text-gray-600 mb-6 leading-relaxed">
                     This app requires <strong>Web Serial API</strong> to connect to the hub via USB. 
-                    Your current browser doesn't support this feature.
+                    Your current browser or device doesn't support this feature.
                 </p>
                 
                 <!-- Supported Browsers -->
                 <div class="bg-gray-50 rounded-lg p-4 mb-6 w-full">
-                    <p class="text-xs font-medium text-gray-700 mb-3">Please use one of these browsers:</p>
-                    <div class="space-y-2">
+                    <p class="text-xs font-medium text-gray-700 mb-3">Use these browsers <strong>on a desktop/laptop computer</strong>:</p>
+                    <div class="space-y-2 mb-3">
                         <div class="flex items-center gap-3">
                             <div class="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm">
                                 <i data-lucide="chrome" class="w-5 h-5 text-blue-600"></i>
                             </div>
-                            <span class="text-sm text-gray-900 font-medium">Google Chrome</span>
+                            <span class="text-sm text-gray-900 font-medium">Google Chrome (Desktop)</span>
                         </div>
                         <div class="flex items-center gap-3">
                             <div class="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm">
                                 <i data-lucide="square" class="w-5 h-5 text-blue-500"></i>
                             </div>
-                            <span class="text-sm text-gray-900 font-medium">Microsoft Edge</span>
+                            <span class="text-sm text-gray-900 font-medium">Microsoft Edge (Desktop)</span>
                         </div>
                     </div>
                 </div>
@@ -86,10 +86,30 @@ export function createBrowserCompatibilityModal() {
 
 /**
  * Check if the browser supports Web Serial API
+ * Note: Mobile devices don't support Web Serial, even Chrome/Edge mobile
  * @returns {boolean} True if browser is compatible, false otherwise
  */
 export function isBrowserCompatible() {
-    return 'serial' in navigator;
+    // Check for Web Serial API support
+    if (!('serial' in navigator)) {
+        return false;
+    }
+    
+    // Mobile devices don't support Web Serial API, even Chrome/Edge
+    if (isMobileDevice()) {
+        return false;
+    }
+    
+    return true;
+}
+
+/**
+ * Detect if running on a mobile device
+ * @returns {boolean} True if mobile device
+ */
+function isMobileDevice() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+           (navigator.maxTouchPoints && navigator.maxTouchPoints > 1 && /Mobi/i.test(navigator.userAgent));
 }
 
 /**
@@ -98,19 +118,27 @@ export function isBrowserCompatible() {
  */
 function detectBrowserName() {
     const userAgent = navigator.userAgent;
+    const isMobile = isMobileDevice();
+    
+    let browserName = 'Unknown Browser';
     
     if (userAgent.includes('Edg/')) {
-        return 'Microsoft Edge';
+        browserName = 'Microsoft Edge';
     } else if (userAgent.includes('Chrome/') && !userAgent.includes('Edg/')) {
-        return 'Google Chrome';
+        browserName = 'Google Chrome';
     } else if (userAgent.includes('Firefox/')) {
-        return 'Mozilla Firefox';
+        browserName = 'Mozilla Firefox';
     } else if (userAgent.includes('Safari/') && !userAgent.includes('Chrome/')) {
-        return 'Safari';
+        browserName = 'Safari';
     } else if (userAgent.includes('Opera/') || userAgent.includes('OPR/')) {
-        return 'Opera';
-    } else {
-        return 'Unknown Browser';
+        browserName = 'Opera';
     }
+    
+    // Add mobile indicator if applicable
+    if (isMobile) {
+        browserName += ' (Mobile)';
+    }
+    
+    return browserName;
 }
 

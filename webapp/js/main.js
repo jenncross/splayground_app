@@ -49,6 +49,7 @@ import { showConnectionModal } from "./components/connectionModal.js";
 import { createSettingsOverlay } from "./components/settingsOverlay.js";
 import { showToast } from "./components/toast.js";
 import { createBrowserCompatibilityModal, isBrowserCompatible } from "./components/browserCompatibilityModal.js";
+import { createPermissionBlockedModal, isPermissionBlockedError } from "./components/permissionBlockedModal.js";
 
 /**
  * Unified error handler for Python backend responses.
@@ -578,6 +579,21 @@ class App {
             this.components.browserCompatibilityModal.remove();
             this.components.browserCompatibilityModal = null;
         }
+        
+        // Show permission blocked modal if needed
+        if (state.showPermissionBlockedModal) {
+            if (this.components.permissionBlockedModal) {
+                this.components.permissionBlockedModal.remove();
+            }
+            this.components.permissionBlockedModal = createPermissionBlockedModal(
+                () => setState({ showPermissionBlockedModal: false }),
+                () => this.handleHubConnect()
+            );
+            this.container.appendChild(this.components.permissionBlockedModal);
+        } else if (this.components.permissionBlockedModal) {
+            this.components.permissionBlockedModal.remove();
+            this.components.permissionBlockedModal = null;
+        }
 
         // Initialize Lucide icons
         if (window.lucide) {
@@ -957,20 +973,29 @@ class App {
                 console.error("❌ Serial connection failed:", result.error);
                 setState({ hubConnecting: false });
                 
-                // Show user-friendly error
-                const error = result.error || "";
-                if (error.includes("in use") || error.includes("busy")) {
+                // Check if this is a permission/popup blocking issue
+                if (isPermissionBlockedError(result)) {
+                    console.log("⚠️ Permission blocked - showing troubleshooting modal");
+                    setState({ showPermissionBlockedModal: true });
+                } else if (result.error && result.error.includes("in use") || result.error && result.error.includes("busy")) {
                     showToast("⚠️  Port in use - close Thonny/Arduino IDE and try again", "error");
-                } else if (error.includes("not available")) {
+                } else if (result.error && result.error.includes("not available")) {
                     showToast("❌ Use Chrome or Edge browser for USB connection", "error");
                 } else {
-                    showToast("Connection failed - check console for details", "error");
+                    showToast("Connection failed: " + (result.error || "Unknown error"), "error");
                 }
             }
         } catch (error) {
             console.error("❌ Serial connection error:", error);
             setState({ hubConnecting: false });
-            showToast("Connection error: " + error.message, "error");
+            
+            // Check if this is a permission/popup blocking issue
+            if (isPermissionBlockedError(error)) {
+                console.log("⚠️ Permission blocked - showing troubleshooting modal");
+                setState({ showPermissionBlockedModal: true });
+            } else {
+                showToast("Connection error: " + error.message, "error");
+            }
         }
     }
 

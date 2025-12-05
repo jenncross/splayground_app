@@ -43,6 +43,7 @@ export const state = {
     showConnectionWarning: false,
     flashMessageBox: false,
     showBrowserCompatibilityModal: false, // Blocking modal for incompatible browsers
+    showPermissionBlockedModal: false, // Modal for popup/permission blocking issues
 
     // Device scanning toggle (webapp setting)
     deviceScanningEnabled: false, // Set to false by default for command-only mode
