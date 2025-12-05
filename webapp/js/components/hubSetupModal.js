@@ -19,6 +19,7 @@ export class HubSetupModal {
         this.modal = null;
         this.uploader = null;
         this.state = 'initial'; // initial, uploading, success, error
+        this.hasExternalAntenna = false; // Track antenna configuration
         this.uploadProgress = {
             current: 0,
             total: 0,
@@ -156,6 +157,20 @@ export class HubSetupModal {
                             <div class="text-sm text-yellow-800">
                                 <p class="font-medium mb-1">Important:</p>
                                 <p>This will overwrite any existing code on your ESP32. Make sure you have backups if needed.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div class="flex items-start gap-3">
+                            <input type="checkbox" id="externalAntennaCheckbox" class="mt-1 w-4 h-4 text-blue-600 rounded">
+                            <div class="flex-1">
+                                <label for="externalAntennaCheckbox" class="text-sm font-medium text-blue-900 cursor-pointer">
+                                    I'm using an external antenna (ESP32-C6 only)
+                                </label>
+                                <p class="text-xs text-blue-700 mt-1">
+                                    Check this if your ESP32-C6 has an external antenna physically connected. Leave unchecked for internal antenna or other ESP32 models.
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -333,13 +348,21 @@ export class HubSetupModal {
         const startBtn = this.modal.querySelector('#start-upload-btn');
         const retryBtn = this.modal.querySelector('#retry-btn');
         const doneBtn = this.modal.querySelector('#done-btn');
+        const antennaCheckbox = this.modal.querySelector('#externalAntennaCheckbox');
 
         if (cancelBtn) {
             cancelBtn.onclick = () => this.hide();
         }
 
         if (startBtn) {
-            startBtn.onclick = () => this.startUpload();
+            startBtn.onclick = () => {
+                // Capture antenna checkbox state before starting upload
+                if (antennaCheckbox) {
+                    this.hasExternalAntenna = antennaCheckbox.checked;
+                    console.log(`External antenna: ${this.hasExternalAntenna}`);
+                }
+                this.startUpload();
+            };
         }
 
         if (retryBtn) {
@@ -366,6 +389,22 @@ export class HubSetupModal {
             // Load all hub files
             console.log('Loading hub files...');
             const files = await loadHubFiles();
+            
+            // Modify main.py based on antenna configuration
+            const mainPyFile = files.find(f => f.path === 'main.py');
+            if (mainPyFile) {
+                console.log(`Configuring antenna: external=${this.hasExternalAntenna}`);
+                if (!this.hasExternalAntenna) {
+                    // Remove the antenna configuration line
+                    mainPyFile.content = mainPyFile.content.replace(
+                        /\s*# Add C6 external antenna configuration\s*\n\s*self\.n\.antenna\(\)\s*\n/,
+                        '\n'
+                    );
+                    console.log('Removed external antenna configuration from main.py');
+                } else {
+                    console.log('Keeping external antenna configuration in main.py');
+                }
+            }
             
             // Initialize progress tracking
             this.uploadProgress = {
