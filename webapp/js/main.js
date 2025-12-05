@@ -48,6 +48,7 @@ import { createConnectionWarningModal } from "./components/connectionWarningModa
 import { showConnectionModal } from "./components/connectionModal.js";
 import { createSettingsOverlay } from "./components/settingsOverlay.js";
 import { showToast } from "./components/toast.js";
+import { createBrowserCompatibilityModal, isBrowserCompatible } from "./components/browserCompatibilityModal.js";
 
 /**
  * Unified error handler for Python backend responses.
@@ -156,28 +157,37 @@ class App {
          * Initialize the application and set up all core systems.
          * 
          * This method handles the complete application startup sequence including:
+         * - Browser compatibility checking for Web Serial API
          * - Setting up Python backend integration and event handlers
          * - Registering state change listeners for reactive updates
          * - Configuring click-outside handlers for UI interactions
          * - Performing initial render of all components
          * 
          * Initialization Flow:
-         * 1. Initialize with empty device list
-         * 2. Set up direct function callbacks for Python integration
-         * 3. Register event listeners for Python backend events
-         * 4. Set up state management and reactive rendering
-         * 5. Initialize Python backend when ready
-         * 6. Render initial UI components
+         * 1. Check browser compatibility (Web Serial API)
+         * 2. Initialize with empty device list
+         * 3. Set up direct function callbacks for Python integration
+         * 4. Register event listeners for Python backend events
+         * 5. Set up state management and reactive rendering
+         * 6. Initialize Python backend when ready
+         * 7. Render initial UI components
          * 
          * Error Handling:
+         * - Show blocking modal for incompatible browsers
          * - Graceful fallback if Python unavailable
          * - Comprehensive logging for debugging initialization issues
          * - Continues operation even if some systems fail to initialize
          */
+        // Check browser compatibility first
+        const browserCompatible = isBrowserCompatible();
+        console.log('Browser compatibility check:', browserCompatible ? '✓ Compatible' : '✗ Not compatible');
+        
         // Initialize with empty device list - will be populated by Python backend
         setState({
             allDevices: [],
             lastUpdateTime: null,
+            isBrowserCompatible: browserCompatible,
+            showBrowserCompatibilityModal: !browserCompatible,
         });
 
         // Add click-outside handler for command palette
@@ -467,13 +477,19 @@ class App {
             state.isRefreshing, // Pass refresh state for loading animation
             state.pythonReady, // Pass Python initialization state
             state.deviceScanningEnabled, // Pass device scanning toggle
+            state.isBrowserCompatible, // Pass browser compatibility status
         );
 
-        const messageHistory = createMessageHistory(state.messageHistory, (message) => {
-            setState({ viewingMessage: message, showMessageDetails: true });
-            this.components.messageDetailsOverlay.style.display = "flex";
-            this.renderMessageDetails();
-        });
+        const messageHistory = createMessageHistory(
+            state.messageHistory, 
+            (message) => {
+                setState({ viewingMessage: message, showMessageDetails: true });
+                this.components.messageDetailsOverlay.style.display = "flex";
+                this.renderMessageDetails();
+            },
+            state.hubConnected,
+            () => this.handleHubConnect()
+        );
 
         const messageInput = createMessageInput(
             state.currentMessage,
@@ -549,6 +565,18 @@ class App {
         if (state.showSettings) {
             this.components.settingsOverlay = createSettingsOverlay(() => this.handleSettingsBack());
             this.container.appendChild(this.components.settingsOverlay);
+        }
+        
+        // Show browser compatibility modal if needed (blocking, highest z-index)
+        if (state.showBrowserCompatibilityModal) {
+            if (this.components.browserCompatibilityModal) {
+                this.components.browserCompatibilityModal.remove();
+            }
+            this.components.browserCompatibilityModal = createBrowserCompatibilityModal();
+            this.container.appendChild(this.components.browserCompatibilityModal);
+        } else if (this.components.browserCompatibilityModal) {
+            this.components.browserCompatibilityModal.remove();
+            this.components.browserCompatibilityModal = null;
         }
 
         // Initialize Lucide icons

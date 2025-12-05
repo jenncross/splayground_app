@@ -43,7 +43,7 @@ import { getRelativeTime } from '../utils/helpers.js';
 import { createBluetoothStatusButton } from './bluetoothStatusButton.js';
 import { createSettingsButton } from './settingsButton.js';
 
-export function createRecipientBar(devices, range, lastUpdateTime, onRangeChange, onClick, onRefresh, hubConnected, hubDeviceName, onHubConnect, onHubDisconnect, onSettingsClick, isRefreshing = false, pythonReady = true, deviceScanningEnabled = false) {
+export function createRecipientBar(devices, range, lastUpdateTime, onRangeChange, onClick, onRefresh, hubConnected, hubDeviceName, onHubConnect, onHubDisconnect, onSettingsClick, isRefreshing = false, pythonReady = true, deviceScanningEnabled = false, isBrowserCompatible = true) {
   const container = document.createElement('div');
   container.className = `bg-white border-b border-gray-200 px-4 py-2 ${deviceScanningEnabled ? 'cursor-pointer' : ''}`;
   if (deviceScanningEnabled) {
@@ -154,7 +154,7 @@ export function createRecipientBar(devices, range, lastUpdateTime, onRangeChange
   const bluetoothButtonContainer = container.querySelector('#bluetoothStatusButton');
   const settingsButtonContainer = container.querySelector('#settingsButton');
   
-  const bluetoothButton = createBluetoothStatusButton(hubConnected, hubDeviceName, onHubConnect, onHubDisconnect, pythonReady);
+  const bluetoothButton = createBluetoothStatusButton(hubConnected, hubDeviceName, onHubConnect, onHubDisconnect, pythonReady, isBrowserCompatible);
   const settingsButton = createSettingsButton(onSettingsClick);
   
   bluetoothButtonContainer.appendChild(bluetoothButton);

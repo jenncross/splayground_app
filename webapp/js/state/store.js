@@ -35,10 +35,14 @@ export const state = {
     hubConnectionMode: null, // "ble" or "serial"
     pythonReady: false, // PyScript initialization state
 
+    // Browser compatibility
+    isBrowserCompatible: true, // Web Serial API support check
+
     // UI state (new design features)
     showSettings: false,
     showConnectionWarning: false,
     flashMessageBox: false,
+    showBrowserCompatibilityModal: false, // Blocking modal for incompatible browsers
 
     // Device scanning toggle (webapp setting)
     deviceScanningEnabled: false, // Set to false by default for command-only mode

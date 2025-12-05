@@ -5,18 +5,28 @@
 import { getCommandIcon } from './icons.js';
 import { getRelativeTime, countDevicesByType } from '../utils/helpers.js';
 import { getCommandLabel } from '../utils/constants.js';
+import { createWelcomeState } from './welcomeState.js';
 
-export function createMessageHistory(messages, onMessageClick) {
+export function createMessageHistory(messages, onMessageClick, hubConnected = false, onHubConnect = null) {
   const container = document.createElement('div');
-  container.className = 'flex-1 overflow-y-auto p-3 space-y-2 bg-gray-50 message-history';
   
   // Filter out any messages with empty commands
   const validMessages = messages.filter(m => m.command && m.command.trim() !== '');
   
+  // Show welcome state if no messages AND not connected
+  if (validMessages.length === 0 && !hubConnected && onHubConnect) {
+    return createWelcomeState(onHubConnect);
+  }
+  
+  // Show simple empty state if no messages but connected
   if (validMessages.length === 0) {
+    container.className = 'flex-1 overflow-y-auto p-3 space-y-2 bg-gray-50 message-history';
     container.innerHTML = '<div class="text-center text-gray-400 py-12 text-sm">No messages sent yet</div>';
     return container;
   }
+  
+  // Show message history
+  container.className = 'flex-1 overflow-y-auto p-3 space-y-2 bg-gray-50 message-history';
   
   validMessages.forEach(message => {
     const bubble = document.createElement('div');
