@@ -1,0 +1,19 @@
+{
+    "name": "Talking to a plushy",
+    "export": true,
+    "files": {
+        "https://chrisrogers.pyscriptapps.com/talking-on-a-channel/latest/py/channel.py": "",
+        "./utilities/RS232_2.py": "RS232.py",
+        "./utilities/utilities.py": "utilities.py",
+        "./utilities/lights.py": "lights.py",
+        "./utilities/i2c_bus.py": "i2c_bus.py",
+        "./utilities/wifi.py": "wifi.py",
+        "./utilities/unit_test.py": "unit_test.py",
+        "./games/sound.py": "sound.py"
+    },
+    "js_modules": {
+        "main": {
+            "https://cdn.jsdelivr.net/npm/micro-repl@0.8.2/serial.js": "micro_repl"
+        }
+    }
+}

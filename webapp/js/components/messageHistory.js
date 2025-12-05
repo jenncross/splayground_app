@@ -7,19 +7,55 @@ import { getRelativeTime, countDevicesByType } from '../utils/helpers.js';
 import { getCommandLabel } from '../utils/constants.js';
 import { createWelcomeState } from './welcomeState.js';
 import { createConnectedEmptyState } from './connectedEmptyState.js';
+import HubSetupModal from './hubSetupModal.js';
 
-export function createMessageHistory(messages, onMessageClick, hubConnected = false, onHubConnect = null) {
+export function createMessageHistory(messages, onMessageClick, hubConnected = false, onHubConnect = null, connectionMode = 'ble', pythonReady = false) {
   const container = document.createElement('div');
   
   // Filter out any messages with empty commands
   const validMessages = messages.filter(m => m.command && m.command.trim() !== '');
   
+  // Setup hub callback for welcome state (before connection)
+  const handleSetupHub = async () => {
+    console.log('Setup Hub clicked (from welcome state)');
+    
+    try {
+      // Request a NEW serial port connection (separate from normal hub connection)
+      if (!navigator.serial) {
+        alert('Web Serial API not available. Please use Chrome or Edge browser.');
+        return;
+      }
+      
+      console.log('Requesting serial port for firmware upload...');
+      const serialPort = await navigator.serial.requestPort();
+      
+      if (!serialPort) {
+        console.log('No port selected');
+        return;
+      }
+      
+      console.log('Serial port selected, opening modal...');
+      
+      // Create and show the modal with the new port
+      const modal = new HubSetupModal();
+      await modal.show(serialPort);
+      
+    } catch (error) {
+      if (error.name === 'NotFoundError' || error.message.includes('cancel')) {
+        console.log('User cancelled port selection');
+      } else {
+        console.error('Error setting up hub:', error);
+        alert('Error: ' + error.message);
+      }
+    }
+  };
+  
   // Show welcome state if no messages AND not connected
   if (validMessages.length === 0 && !hubConnected && onHubConnect) {
-    return createWelcomeState(onHubConnect);
+    return createWelcomeState(onHubConnect, handleSetupHub, pythonReady);
   }
   
-  // Show connected empty state if no messages but hub is connected
+  // Show connected empty state if no messages but hub is connected  
   if (validMessages.length === 0) {
     return createConnectedEmptyState(() => {
       // Focus the message input field when user clicks on the empty state

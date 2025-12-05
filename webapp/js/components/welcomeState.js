@@ -8,92 +8,78 @@
  * actionable guidance to help users get started quickly.
  */
 
-export function createWelcomeState(onConnect) {
+import HubSetupModal from './hubSetupModal.js';
+
+export function createWelcomeState(onConnect, onSetupHub, pythonReady = false) {
     const container = document.createElement('div');
-    container.className = 'flex-1 flex items-center justify-center p-6 bg-gray-50';
+    container.className = 'flex-1 flex items-center justify-center p-4 bg-gray-50 overflow-y-auto';
+    
+    const isDisabled = !pythonReady;
+    const disabledClasses = isDisabled ? 'opacity-50 cursor-not-allowed' : '';
     
     container.innerHTML = `
         <div class="max-w-sm mx-auto text-center">
             <!-- Icon -->
-            <div class="mb-6 flex justify-center">
-                <div class="w-20 h-20 rounded-full bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center">
-                    <i data-lucide="cable" class="w-10 h-10 text-blue-600"></i>
+            <div class="mb-3 flex justify-center">
+                <div class="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center">
+                    <i data-lucide="cable" class="w-8 h-8 text-blue-600"></i>
                 </div>
             </div>
             
             <!-- Heading -->
-            <h2 class="text-lg font-semibold text-gray-900 mb-3">
+            <h2 class="text-lg font-bold text-gray-900 mb-3">
                 Welcome to Smart Playground Control
             </h2>
             
             <!-- Instructions -->
-            <div class="space-y-4 mb-6">
-                <div class="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-                    <div class="flex items-start gap-3 text-left">
-                        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <span class="text-sm font-bold text-blue-600">1</span>
-                        </div>
-                        <div class="flex-1">
-                            <p class="text-sm font-medium text-gray-900 mb-1">
-                                Connect your hub via USB
-                            </p>
-                            <p class="text-xs text-gray-600">
-                                Use a USB cable to connect your ESP32 hub to this computer
-                            </p>
-                        </div>
+            <div class="space-y-2 mb-5 px-2">
+                <div class="flex items-start gap-3 text-left">
+                    <div class="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span class="text-xs font-bold text-blue-500">1</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm text-gray-700">
+                            Connect ESP32 via USB
+                        </p>
                     </div>
                 </div>
                 
-                <div class="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-                    <div class="flex items-start gap-3 text-left">
-                        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <span class="text-sm font-bold text-blue-600">2</span>
-                        </div>
-                        <div class="flex-1">
-                            <p class="text-sm font-medium text-gray-900 mb-1">
-                                Press the Connect button
-                            </p>
-                            <p class="text-xs text-gray-600">
-                                Look for the orange "Disconnected" button at the top of the screen
-                            </p>
-                        </div>
+                <div class="flex items-start gap-3 text-left">
+                    <div class="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span class="text-xs font-bold text-blue-500">2</span>
                     </div>
-                </div>
-                
-                <div class="bg-white rounded-lg p-4 shadow-sm border border-gray-200">
-                    <div class="flex items-start gap-3 text-left">
-                        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <span class="text-sm font-bold text-blue-600">3</span>
-                        </div>
-                        <div class="flex-1">
-                            <p class="text-sm font-medium text-gray-900 mb-1">
-                                Select your hub device
-                            </p>
-                            <p class="text-xs text-gray-600">
-                                Choose your ESP32 device from the browser prompt
-                            </p>
-                        </div>
+                    <div class="flex-1">
+                        <p class="text-sm text-gray-700">
+                            Choose connection option below
+                        </p>
                     </div>
                 </div>
             </div>
             
-            <!-- CTA Button -->
-            <button id="welcomeConnectBtn" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-md hover:shadow-lg flex items-center justify-center gap-2 mx-auto">
-                <i data-lucide="plug" class="w-4 h-4"></i>
-                Connect Hub
-            </button>
-            
-            <!-- Help Text -->
-            <p class="text-xs text-gray-500 mt-4">
-                Once connected, you'll be able to send commands to playground modules
-            </p>
+            <!-- CTA Buttons -->
+            <div class="space-y-3">
+                <button id="welcomeConnectBtn" ${isDisabled ? 'disabled' : ''} class="w-full px-6 py-3 bg-blue-600 text-white text-base font-semibold rounded-lg transition-colors shadow-md flex items-center justify-center gap-2 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700 hover:shadow-lg'}">
+                    <i data-lucide="plug" class="w-5 h-5"></i>
+                    ${isDisabled ? 'Initializing...' : 'Connect to Existing Hub'}
+                </button>
+                
+                <button id="welcomeSetupBtn" ${isDisabled ? 'disabled' : ''} class="w-full px-3 py-2 bg-white text-gray-600 text-xs font-normal rounded-lg transition-colors border border-gray-300 flex items-center justify-center gap-1.5 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 hover:border-gray-400'}">
+                    <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i>
+                    Setup as New Hub (blank ESP32 only)
+                </button>
+            </div>
         </div>
     `;
     
-    // Attach click handler
+    // Attach click handlers (only if Python is ready)
     const connectBtn = container.querySelector('#welcomeConnectBtn');
-    if (connectBtn) {
+    if (connectBtn && onConnect && pythonReady) {
         connectBtn.onclick = onConnect;
+    }
+    
+    const setupBtn = container.querySelector('#welcomeSetupBtn');
+    if (setupBtn && onSetupHub && pythonReady) {
+        setupBtn.onclick = onSetupHub;
     }
     
     return container;

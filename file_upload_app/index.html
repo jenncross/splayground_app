@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Talking to a plushy</title>
+
+    <!-- Recommended meta tags -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+    <!-- PyScript CSS -->
+    <link rel="stylesheet" href="https://pyscript.net/releases/2025.11.2/core.css">
+
+    <!-- This script tag bootstraps PyScript -->
+    <script type="module" src="https://pyscript.net/releases/2025.11.2/core.js"></script>
+</head>
+<body>
+    <h3>Jenn said:</h3>
+    find the note --- rotate to note or click to "pick up the note", ---> each stuffie is assigned a note "bell choir"
+    <h3>Milan said:</h3>
+    to reset - put the red blinking light to your right and hit the reset button on the right side
+    <h3>Chris said:</h3>
+    Connect up, click on "load libraries", then "Sample code" runs all the unit tests
+    <script type="mpy-editor" src="./main.py" config="./pyscript.toml" env='hack' setup></script>
+    <div id='all_things_channels'></div>
+    <div id='all_things_rs232'></div>
+    <script type="mpy-editor" env='hack'>
+        import asyncio
+        
+        async def fred(message):
+            topic, value = channel.check('/fred/twice',message)
+            if topic and value:
+                print('Success: ',topic, value)
+        channel.callback = fred
+            
+        await channel.post('/fred/twice',12)
+        
+        print('value = ',channel.value)    
+    </script>
+</body>
+</html>

@@ -496,7 +496,9 @@ class App {
                 this.renderMessageDetails();
             },
             state.hubConnected,
-            () => this.handleHubConnect()
+            () => this.handleHubConnect(),
+            state.hubConnectionMode || 'ble',
+            state.pythonReady
         );
 
         const messageInput = createMessageInput(
