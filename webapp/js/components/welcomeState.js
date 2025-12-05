@@ -65,7 +65,7 @@ export function createWelcomeState(onConnect, onSetupHub, pythonReady = false) {
                 
                 <button id="welcomeSetupBtn" ${isDisabled ? 'disabled' : ''} class="w-full px-3 py-2 bg-white text-gray-600 text-xs font-normal rounded-lg transition-colors border border-gray-300 flex items-center justify-center gap-1.5 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 hover:border-gray-400'}">
                     <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i>
-                    Setup as New Hub (blank ESP32 only)
+                    Setup as New Hub (ESP32)
                 </button>
             </div>
         </div>

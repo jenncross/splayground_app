@@ -1,6 +1,11 @@
 /**
  * Playground Control App - Icon Components
+ * 
+ * All command data (colors, icons, descriptions) is now centralized in commands.json
+ * This file dynamically creates icons based on that configuration
  */
+
+import { COMMANDS } from "../utils/constants.js";
 
 export function createIcon(name, className = "w-4 h-4") {
     const i = document.createElement("i");
@@ -10,22 +15,14 @@ export function createIcon(name, className = "w-4 h-4") {
 }
 
 export function getCommandIcon(commandLabel, size = "small") {
-    const commands = {
-        // Rainbow spectrum 🌈 (skipping yellow/orange)
-        Notes: { bgColor: "#e88a82", icon: "music" },          // warm coral (orangey-red pink)
-        Shake: { bgColor: "#d57aae", icon: "zap" },            // rich pink (better contrast)
-        "Hot/Cold": { bgColor: "#bf75c9", icon: "thermometer" }, // magenta
-        Jump: { bgColor: "#a082cf", icon: "arrow-up" },        // lavender
-        Clap: { bgColor: "#6397b5", icon: "hand" },            // blue
-        Rainbow: { bgColor: "#8fd3c9", icon: "rainbow" },      // turquoise
-        Off: { bgColor: "#93d5a8", icon: "power-off" },        // green
-
-    };
-
-    // Get command config or use placeholder for unknown commands
-    let cmd = commands[commandLabel];
+    // Find command in centralized config by label
+    const commandConfig = COMMANDS.find(cmd => cmd.label === commandLabel);
     
-    if (!cmd) {
+    // Get command config or use placeholder for unknown commands
+    let cmd;
+    if (commandConfig) {
+        cmd = { bgColor: commandConfig.bgColor, icon: commandConfig.icon };
+    } else {
         console.warn(`No icon found for command: ${commandLabel}`);
         // Use placeholder icon for unknown/empty commands
         cmd = { bgColor: "#9ca3af", icon: "help-circle" };

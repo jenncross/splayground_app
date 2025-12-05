@@ -7,33 +7,36 @@
  * and allows for consistent theming and behavior.
  * 
  * Key Constants:
- * - COMMANDS: Available playground commands with styling and icons
- * - Command properties: id, label, background color, icon, text color
+ * - COMMANDS: Available playground commands with styling, icons, and descriptions
+ * - Command properties: id, label, background color, icon, text color, description
  * 
- * Command Types:
- * - play: Start playground activity
- * - pause: Pause current activity
- * - win: Trigger win/success state
- * - color_game: Start color-based game
- * - number_game: Start number-based game
- * - off: Turn off/reset modules
+ * Command Configuration:
+ * - All command data is loaded from commands.json
+ * - To add/edit commands, simply update commands.json
+ * - Each command includes a description for the info overlay
  * 
  * Usage:
  * - Import COMMANDS array for command palette generation
  * - Use consistent command IDs throughout application
- * - Colors and icons are defined here for easy theming
+ * - Colors, icons, and descriptions are defined in commands.json for easy updates
  * 
  */
 
-export const COMMANDS = [
-    { id: "Notes", label: "Notes", bgColor: "#7eb09b", icon: "music", textColor: "white" },
-    { id: "Shake", label: "Shake", bgColor: "#d4a574", icon: "zap", textColor: "white" },
-    { id: "Hot_cold", label: "Hot/Cold", bgColor: "#b084cc", icon: "thermometer", textColor: "white" },
-    { id: "Jump", label: "Jump", bgColor: "#658ea9", icon: "arrow-up", textColor: "white" },
-    { id: "Clap", label: "Clap", bgColor: "#c97d8c", icon: "hand", textColor: "white" },
-    { id: "Rainbow", label: "Rainbow", bgColor: "#d7a449", icon: "rainbow", textColor: "white" },
-    { id: "Off", label: "Off", bgColor: "#e98973", icon: "power-off", textColor: "white" },
-];
+// Load commands from JSON configuration file
+let commandsData = [];
+
+// Fetch commands synchronously using top-level await (ES2022)
+try {
+    const response = await fetch('./js/utils/commands.json');
+    commandsData = await response.json();
+    console.log('Commands loaded from JSON:', commandsData);
+} catch (error) {
+    console.error('Failed to load commands.json:', error);
+    // Fallback to empty array - app will still work
+    commandsData = [];
+}
+
+export const COMMANDS = commandsData;
 
 /**
  * Get command label from command ID

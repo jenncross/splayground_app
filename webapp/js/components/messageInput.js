@@ -42,8 +42,9 @@
  * 
  */
 
-import { getCommandIcon } from "./icons.js";
+import { getCommandIcon, createIcon } from "./icons.js";
 import { COMMANDS, getCommandLabel, getCommandById } from "../utils/constants.js";
+import { createCommandInfoOverlay } from "./commandInfoOverlay.js";
 
 export function createMessageInput(currentMessage, showPalette, canSend, onInputClick, onCommandSelect, onClearMessage, onSendMessage, flashMessageBox) {
     const container = document.createElement("div");
@@ -103,6 +104,11 @@ export function createMessageInput(currentMessage, showPalette, canSend, onInput
 
     COMMANDS.forEach((command, index) => {
         // console.log(`Processing command ${index}:`, command);
+        
+        // Create wrapper for button and info icon
+        const wrapper = document.createElement("div");
+        wrapper.className = "relative flex flex-col items-center gap-2";
+        
         const btn = document.createElement("button");
         btn.className = "bg-gray-100 rounded-2xl p-3 flex-shrink-0 transition-all active:scale-95 flex flex-col items-center gap-2";
         btn.onclick = () => onCommandSelect(command);
@@ -123,8 +129,57 @@ export function createMessageInput(currentMessage, showPalette, canSend, onInput
         label.textContent = command.label;
         btn.appendChild(label);
 
+        wrapper.appendChild(btn);
+
+        // Add info icon if description exists
+        if (command.description) {
+            const infoBtn = document.createElement("button");
+            infoBtn.className = "absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-400 flex items-center justify-center transition-all hover:bg-slate-500 active:scale-95 z-10";
+            
+            let overlay = null;
+            
+            // Close overlay function
+            const closeOverlay = () => {
+                if (overlay && document.body.contains(overlay)) {
+                    document.body.removeChild(overlay);
+                    overlay = null;
+                }
+            };
+            
+            // Show overlay on click
+            infoBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // Don't create multiple overlays
+                if (overlay) return;
+                
+                // Get the command icon for the overlay
+                const commandIcon = getCommandIcon(command.label, "large");
+                
+                // Create and show overlay
+                overlay = createCommandInfoOverlay(
+                    command.label,
+                    command.description,
+                    commandIcon,
+                    closeOverlay
+                );
+                
+                document.body.appendChild(overlay);
+                
+                // Re-initialize Lucide icons in the overlay
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            };
+            
+            const infoIcon = createIcon("info", "w-3 h-3 text-white");
+            infoBtn.appendChild(infoIcon);
+            wrapper.appendChild(infoBtn);
+        }
+
         // console.log("Appending button to container");
-        commandsContainer.appendChild(btn);
+        commandsContainer.appendChild(wrapper);
     });
 
     return container;
