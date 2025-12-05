@@ -2,6 +2,7 @@
 
 A mobile-first web application for controlling smart playground modules via ESP32 hub using Web Serial/USB communication.
 
+
 ## Overview
 
 This web app provides a messaging-style interface to send commands to ESP32-based playground modules. It runs entirely in the browser using PyScript (Python in browser) for backend logic and vanilla JavaScript for the UI. The app connects to an ESP32-C6 hub via USB Serial (Web Serial API), which then broadcasts commands to playground modules using ESP-NOW wireless protocol.
@@ -35,6 +36,13 @@ This web app provides a messaging-style interface to send commands to ESP32-base
 - **Device Scanning Toggle**: Enable/disable module discovery (default: off for command-only mode)
 - **Module Nicknames**: Assign custom names to modules (when scanning enabled)
 - **Browser Compatibility Checking**: Warns if Web Serial API not supported
+
+
+## Team
+Smart Playground Project at Tufts CEEO
+Supported by NSF Award #2301249
+Front-end/backend and Hub main.py by J. Cross
+Hub utilities by C. Rogers, M. Dahal
 
 ## Architecture
 
@@ -340,14 +348,6 @@ const devices = getAvailableDevices();
 - Close unnecessary browser tabs
 - Check browser console for errors
 - Verify PyScript has finished loading
-
-## License
-
-[Your License Here]
-
-## Contributing
-
-[Your contribution guidelines here]
 
 ## Support
 
