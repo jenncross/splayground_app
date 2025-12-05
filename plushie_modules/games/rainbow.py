@@ -1,31 +1,31 @@
 import random
 import math
 import asyncio
+import time
 
-from utilities.utilities import Button
-import utilities.lights as lights
-import utilities.i2c_bus as i2c_bus
 from games.game import Game
+from utilities.colors import *
 
-COLORS = [lights.VIOLET, lights.INDIGO, lights.BLUE, lights.GREEN, lights.YELLOW, lights.ORANGE, lights.RED]
+INTENSITY = 0.1
 
 class Rainbow(Game):
     def __init__(self, main):
-        super().__init__('Rainbow Game')
-        self.main = main
+        super().__init__(main, 'Rainbow Game')
         
     def start(self):
-        self.button = Button()
-        self.level = 0
-        
-
-    async def loop(self):
+        self.bat = int(self.main.battery.read()/100*12)
+        self.bat = max(1, min(self.bat,12))
+        print('Battery: ',self.bat)
+        self.main.lights.all_on(GREEN, 0.1, self.bat)
+        time.sleep(2)
         for i in range(12):
-            self.lights.on(i, COLORS[i%7])
+            self.main.lights.on(i, COLORS[i%7], INTENSITY)
+            
+    async def loop(self):
+        pass
+
 
     def close(self):
-        self.lights.all_off()
-        self.button.irq = None
-
-
-
+        self.main.lights.all_off()
+        #if not self.main.button.pressed:
+        #    self.main.utilities.hibernate()

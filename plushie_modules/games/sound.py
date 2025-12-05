@@ -1,11 +1,10 @@
 import random
 import asyncio
 
-from utilities.utilities import Button,Buzzer
-import utilities.lights as lights
 from games.game import Game
+from utilities.colors import *
 
-#  ALL ESPNow happens in main.py
+# all lights etc declared in Game
 
 # Frequencies for all 12 notes (in Hz)
 NOTES = {
@@ -18,11 +17,8 @@ NOTES = {
 class Notes(Game):
     def __init__(self, main):
         super().__init__(main, 'Notes Game')
-        self.main = main
         
     def start(self):
-        self.button = Button()
-        self.buzzer = Buzzer()
         self.note = random.choice(list(NOTES.keys()))
         self.frequency = NOTES[self.note]
         print(f"You were assigned {self.note} at a frequency of {self.frequency}")
@@ -32,15 +28,14 @@ class Notes(Game):
         Async task to play a random note while button is pressed.
         Stops when self.running is set to False.
         """
-        if self.button.pressed:  # Button pressed
-            self.buzzer.play(self.frequency)
-            self.lights.all_on(lights.GREEN, 0.1)
+        if self.main.button.pressed:  # Button pressed
+            self.main.buzzer.play(self.frequency)
+            self.main.lights.all_on(GREEN, 0.1)
         else:  # Button released
-            self.buzzer.stop()  # Silence
-            self.lights.all_off()
+            self.main.buzzer.stop()  # Silence
+            self.main.lights.all_off()
 
     def close(self):
-        self.lights.all_off() 
-        self.buzzer.close()
-        self.button.irq = None
+        self.main.lights.all_off() 
+        self.main.buzzer.stop()
 

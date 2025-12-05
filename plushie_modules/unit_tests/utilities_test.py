@@ -40,8 +40,10 @@ def accel_test():
     print('Testing the accelerometer 10 times')
     a = i2c_bus.LIS2DW12()
     time.sleep(0.1)
-    for i in range(5):
-        print(f"Test: {i+1} - {a.read_accel()}")
+    for i in range(15):
+        x,y,z = a.read_accel()
+        magnitude = (x**2 + y**2 + z**2)**0.5
+        print(f"Test: {i+1} - {magnitude}: {x}, {y}, {z}")
         time.sleep(1)
     
     print("Done testing")
@@ -52,11 +54,9 @@ def battery_test():
     print('percentage = ',b.read())
 
     
-button_test()
-motor_test()
-buzzer_test()
-light_test()
+#button_test()
+#motor_test()
+#buzzer_test()
+#light_test()
 accel_test()
 battery_test()
-
-#utilities.hibernate()
