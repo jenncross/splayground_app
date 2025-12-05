@@ -58,7 +58,6 @@ export function createRecipientBar(devices, range, lastUpdateTime, onRangeChange
         ${isRefreshing ? '<i data-lucide="loader" class="w-4 h-4 text-gray-500 animate-spin"></i>' : ''}
       ` : `
         <span class="text-gray-700 text-sm font-medium">All Modules</span>
-        <span class="text-xs text-gray-500">(broadcast)</span>
       `}
       
       <!-- Hub Status Controls (right-aligned) -->

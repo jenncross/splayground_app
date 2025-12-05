@@ -11,20 +11,15 @@ export function createIcon(name, className = "w-4 h-4") {
 
 export function getCommandIcon(commandLabel, size = "small") {
     const commands = {
-        // New game commands
-        Notes: { bgColor: "#7eb09b", icon: "music" },
-        Shake: { bgColor: "#d4a574", icon: "zap" },
-        "Hot/Cold": { bgColor: "#b084cc", icon: "thermometer" },
-        Jump: { bgColor: "#658ea9", icon: "arrow-up" },
-        Clap: { bgColor: "#c97d8c", icon: "hand" },
-        Rainbow: { bgColor: "#d7a449", icon: "rainbow" },
-        Off: { bgColor: "#e98973", icon: "power-off" },
-        // Legacy commands (for compatibility)
-        Play: { bgColor: "#7eb09b", icon: "play" },
-        Pause: { bgColor: "#d4a574", icon: "pause" },
-        Win: { bgColor: "#b084cc", icon: "trophy" },
-        "Color Game": { bgColor: "#658ea9", icon: "palette" },
-        "Number Game": { bgColor: "#d7a449", icon: "hash" },
+        // Rainbow spectrum 🌈 (skipping yellow/orange)
+        Notes: { bgColor: "#e88a82", icon: "music" },          // warm coral (orangey-red pink)
+        Shake: { bgColor: "#d57aae", icon: "zap" },            // rich pink (better contrast)
+        "Hot/Cold": { bgColor: "#bf75c9", icon: "thermometer" }, // magenta
+        Jump: { bgColor: "#a082cf", icon: "arrow-up" },        // lavender
+        Clap: { bgColor: "#6397b5", icon: "hand" },            // blue
+        Rainbow: { bgColor: "#8fd3c9", icon: "rainbow" },      // turquoise
+        Off: { bgColor: "#93d5a8", icon: "power-off" },        // green
+
     };
 
     // Get command config or use placeholder for unknown commands
