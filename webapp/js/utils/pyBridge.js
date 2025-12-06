@@ -9,7 +9,7 @@
  * - Direct function calls to Python backend via window object
  * - Async/await support for Python function calls
  * - Automatic Python readiness detection and waiting
- * - Comprehensive error handling with fallback values
+ * - Better error handling with proper error propagation
  * - Event system for Python-initiated callbacks
  * - Timeout handling for initialization
  * 
@@ -28,12 +28,48 @@
  * - refreshDevices(): Request fresh device scan from hub
  * 
  * Error Handling:
- * - Graceful degradation when Python backend unavailable
- * - Consistent return values for failed operations
+ * - Throws PythonNotReadyError if Python backend not initialized
+ * - Errors propagate to caller for proper UI handling
  * - Logging of all errors for debugging
- * - Fallback to empty/default values when appropriate
+ * - Enhanced error context with function name and arguments
  * 
  */
+
+/**
+ * Custom error for Python readiness issues
+ */
+class PythonNotReadyError extends Error {
+  constructor(functionName) {
+    super(`Python function '${functionName}' not available. PyScript may still be initializing.`);
+    this.name = 'PythonNotReadyError';
+    this.functionName = functionName;
+  }
+}
+
+/**
+ * Call Python function with better error context
+ * @param {string} fnName - Name of the Python function on window object
+ * @param  {...any} args - Arguments to pass to the function
+ * @returns {Promise<any>} Result from Python function
+ * @throws {PythonNotReadyError} If function not available
+ * @throws {Error} If function call fails
+ */
+async function callPython(fnName, ...args) {
+  const fn = window[fnName];
+  if (typeof fn !== 'function') {
+    throw new PythonNotReadyError(fnName);
+  }
+  
+  try {
+    return await fn(...args);
+  } catch (error) {
+    // Add context to error for better debugging
+    error.pythonFunction = fnName;
+    error.pythonArgs = args;
+    console.error(`Python call failed: ${fnName}`, error);
+    throw error;
+  }
+}
 
 const PyBridge = {
   // Check if Python is ready
@@ -51,99 +87,38 @@ const PyBridge = {
     return this.isPythonReady();
   },
 
-  // Direct function calls with error handling
+  // Direct function calls with simplified error handling
   async getDevices() {
-    if (!this.isPythonReady()) {
-      console.warn("Python not ready, returning empty array");
-      return [];
-    }
-    try {
-      return await window.get_devices();
-    } catch (e) {
-      console.error("get_devices failed:", e);
-      return [];
-    }
+    return await callPython('get_devices');
   },
 
   async getConnectionStatus() {
-    if (!this.isPythonReady()) {
-      return { connected: false, device: null };
-    }
-    try {
-      return await window.get_connection_status();
-    } catch (e) {
-      console.error("get_connection_status failed:", e);
-      return { connected: false, device: null };
-    }
+    return await callPython('get_connection_status');
   },
 
   async connectHub() {
-    if (!this.isPythonReady()) {
-      return { status: "error", error: "Python not ready" };
-    }
-    try {
-      return await window.connect_hub();
-    } catch (e) {
-      console.error("connect_hub failed:", e);
-      return { status: "error", error: e.message };
-    }
+    return await callPython('connect_hub');
   },
 
   async disconnectHub() {
-    if (!this.isPythonReady()) {
-      return { status: "error", error: "Python not ready" };
-    }
-    try {
-      return await window.disconnect_hub();
-    } catch (e) {
-      console.error("disconnect_hub failed:", e);
-      return { status: "error", error: e.message };
-    }
+    return await callPython('disconnect_hub');
   },
 
   async connectHubSerial() {
-    if (!this.isPythonReady()) {
-      return { status: "error", error: "Python not ready" };
-    }
-    try {
-      return await window.connect_hub_serial();
-    } catch (e) {
-      console.error("connect_hub_serial failed:", e);
-      return { status: "error", error: e.message };
-    }
+    return await callPython('connect_hub_serial');
   },
 
   async disconnectHubSerial() {
-    if (!this.isPythonReady()) {
-      return { status: "error", error: "Python not ready" };
-    }
-    try {
-      return await window.disconnect_hub_serial();
-    } catch (e) {
-      console.error("disconnect_hub_serial failed:", e);
-      return { status: "error", error: e.message };
-    }
+    return await callPython('disconnect_hub_serial');
   },
 
   async sendCommandToHub(command, rssiThreshold) {
-    if (!this.isPythonReady()) {
-      return { status: "error", error: "Python not ready" };
-    }
-    try {
-      return await window.send_command_to_hub(command, rssiThreshold);
-    } catch (e) {
-      console.error("send_command_to_hub failed:", e);
-      return { status: "error", error: e.message };
-    }
+    return await callPython('send_command_to_hub', command, rssiThreshold);
   },
 
   async refreshDevices(rssiThreshold = "all") {
-    if (!this.isPythonReady()) {
-      console.warn("Python not ready, returning empty array");
-      return [];
-    }
     try {
-      return await window.refresh_devices_from_hub(rssiThreshold);
+      return await callPython('refresh_devices_from_hub', rssiThreshold);
     } catch (e) {
       // Check if it's a GATT error (transient, should retry)
       const isGattError = e.message && (
@@ -159,10 +134,8 @@ const PyBridge = {
         gattError.isGattError = true;
         throw gattError;
       } else {
-        // Non-GATT exception - log details and return empty array
-        console.error("Unexpected exception during refresh:", e);
-        console.error("Exception type:", e.name, "| Message:", e.message);
-        return [];
+        // Re-throw other errors for caller to handle
+        throw e;
       }
     }
   },
@@ -170,6 +143,7 @@ const PyBridge = {
   // Direct function calls only - no event system needed
 };
 
-// Make PyBridge available globally and as export
+// Make PyBridge and error class available globally and as exports
 window.PyBridge = PyBridge;
-export { PyBridge };
+window.PythonNotReadyError = PythonNotReadyError;
+export { PyBridge, PythonNotReadyError };

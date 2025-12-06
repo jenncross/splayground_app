@@ -34,13 +34,11 @@ import random
 import time
 
 # Import WebBLE class
-from mpy.webBluetooth import code
-exec(code)  # This executes the code and creates the WebBLE class
+from mpy.webBluetooth import WebBLE
 ble = WebBLE()  # Create BLE instance
 
 # Import WebSerial class
-from mpy.webSerial import code as serial_code
-exec(serial_code)  # This executes the code and creates the WebSerial class
+from mpy.webSerial import WebSerial
 serial = WebSerial()  # Create Serial instance (version printed in __init__)
 
 # Set up serial callbacks (will be properly assigned after functions are defined)
@@ -646,8 +644,10 @@ async def send_command_to_hub(command, rssi_threshold="all"):
             return js_result
         
         # Format for Serial (JSON)
+        console.log(f"🔍 Building JSON: cmd={command} (type={type(command).__name__}), rssi={rssi_threshold} (type={type(rssi_threshold).__name__})")
         cmd_obj = {"cmd": command, "rssi": rssi_threshold}
         message = json.dumps(cmd_obj)
+        console.log(f"📤 JSON string to send: '{message}' (length={len(message)})")
         success = await serial.send(message)
         
     elif hub_connection_mode == "ble":

@@ -116,7 +116,7 @@ export function showSerialConnectionLostError() {
             solutions: [
                 "Check USB cable",
                 "Close other apps (Thonny, Arduino IDE)",
-                "Click 'Connect Hub' to reconnect"
+                "Click 'Disconnected' button to reconnect"
             ]
         }
     });
