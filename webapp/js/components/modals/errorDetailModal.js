@@ -10,7 +10,7 @@
  * - Multi-step troubleshooting guidance
  */
 
-import { setState } from "../state/store.js";
+import { setState } from "../../state/store.js";
 
 export function createErrorDetailModal(errorData) {
     const modal = document.createElement('div');

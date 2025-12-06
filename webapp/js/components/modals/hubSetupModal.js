@@ -8,12 +8,13 @@
  * - loading: Connecting and querying device information
  * - initial: Confirmation screen with device info
  * - uploading: Progress bar and file list
- * - success: Success message with next steps
+ * - success: Success message with reset button
+ * - resetting: Device is performing hard reset to boot into new firmware
  * - error: Error message with retry option
  */
 
-import { loadHubFiles } from '../../hubCode/manifest.js';
-import { PyBridge } from '../utils/pyBridge.js';
+import { loadHubFiles } from '../../../hubCode/manifest.js';
+import { PyBridge } from '../../utils/pyBridge.js';
 
 export class HubSetupModal {
     constructor() {
@@ -174,6 +175,9 @@ export class HubSetupModal {
                 break;
             case 'success':
                 content = this.renderSuccess();
+                break;
+            case 'resetting':
+                content = this.renderResetting();
                 break;
             case 'error':
                 content = this.renderError();
@@ -377,28 +381,57 @@ export class HubSetupModal {
                     </div>
                     
                     <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <p class="font-medium text-gray-900 mb-3">Next steps:</p>
-                        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-700">
-                            <li>Press the <strong>reset button</strong> on your ESP32</li>
-                            <li>Wait for the hub to boot up (~2 seconds)</li>
-                            <li>Reconnect to start using your hub</li>
-                        </ol>
+                        <p class="font-medium text-gray-900 mb-3">Ready to activate:</p>
+                        <p class="text-sm text-gray-700">Click "Done & Reset" to reboot the device and start the hub firmware.</p>
                     </div>
                     
                     <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <div class="flex items-start gap-3">
                             <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
                             <div class="text-sm text-blue-800">
-                                <p>The hub will now respond to commands and communicate with playground modules via ESP-NOW.</p>
+                                <p>The hub will respond to commands and communicate with playground modules via ESP-NOW.</p>
                             </div>
                         </div>
                     </div>
                 </div>
                 
                 <div class="flex gap-3 mt-6">
-                    <button id="done-btn" class="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors">
-                        Done
+                    <button id="done-btn" class="flex-1 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
+                        <i data-lucide="zap" class="w-4 h-4"></i>
+                        <span>Done & Reset</span>
                     </button>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Render resetting state while device reboots
+     */
+    renderResetting() {
+        return `
+            <div class="p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="animate-spin">
+                        <i data-lucide="refresh-cw" class="w-6 h-6 text-blue-500"></i>
+                    </div>
+                    <h2 class="text-xl font-bold text-gray-800">Resetting Device...</h2>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div class="flex items-start gap-3">
+                            <i data-lucide="zap" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
+                            <div class="text-sm text-blue-800">
+                                <p class="font-medium mb-1">Performing hard reset...</p>
+                                <p>The device is rebooting into the new firmware.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-gray-600 text-sm">
+                        <p>This will take just a moment. The hub will automatically start running.</p>
+                    </div>
                 </div>
             </div>
         `;
@@ -493,7 +526,32 @@ export class HubSetupModal {
         }
 
         if (doneBtn) {
-            doneBtn.onclick = () => this.hide();
+            doneBtn.onclick = async () => {
+                try {
+                    console.log('🔄 Performing hard reset to boot into new firmware...');
+                    
+                    // Show resetting state
+                    this.state = 'resetting';
+                    this.render();
+                    
+                    // Perform hard reset (executes machine.reset() on device)
+                    const result = await PyBridge.hardResetDevice();
+                    
+                    if (result.status === 'success') {
+                        console.log('✅ Device reset successful, now running main.py');
+                    } else {
+                        console.warn('⚠️ Reset completed but with warning:', result.error);
+                    }
+                    
+                    // Close modal after brief delay
+                    setTimeout(() => this.hide(), 500);
+                    
+                } catch (error) {
+                    console.error('❌ Reset error:', error);
+                    // Close anyway - device may have reset despite error
+                    setTimeout(() => this.hide(), 500);
+                }
+            };
         }
     }
 

@@ -2,8 +2,8 @@
  * Playground Control App - Device List Overlay
  */
 
-import { getDeviceIcon, getSignalIcon, getBatteryIcon } from './icons.js';
-import { getRangeLabel } from '../state/store.js';
+import { getDeviceIcon, getSignalIcon, getBatteryIcon } from '../common/icons.js';
+import { getRangeLabel } from '../../state/store.js';
 
 export function createDeviceListOverlay(devices, range, isRefreshing, editingDeviceId, nicknames, onClose, onRangeChange, onRefresh, onStartEdit, onSaveNickname, hubConnected, onHubConnect) {
   const overlay = document.createElement('div');

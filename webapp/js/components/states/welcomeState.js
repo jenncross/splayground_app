@@ -8,7 +8,7 @@
  * actionable guidance to help users get started quickly.
  */
 
-import HubSetupModal from './hubSetupModal.js';
+import HubSetupModal from '../modals/hubSetupModal.js';
 
 export function createWelcomeState(onConnect, onSetupHub, pythonReady = false) {
     const container = document.createElement('div');

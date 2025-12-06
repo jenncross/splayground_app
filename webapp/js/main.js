@@ -39,18 +39,18 @@ if (!PyBridgeToUse) {
     console.error("PyBridge not available! Check module loading.");
 }
 import { formatDisplayTime } from "./utils/helpers.js";
-import { createRecipientBar } from "./components/recipientBar.js";
-import { createMessageHistory } from "./components/messageHistory.js";
-import { createMessageInput } from "./components/messageInput.js";
-import { createDeviceListOverlay } from "./components/deviceListOverlay.js";
-import { createMessageDetailsOverlay } from "./components/messageDetailsOverlay.js";
-import { createConnectionWarningModal } from "./components/connectionWarningModal.js";
-import { showConnectionModal } from "./components/connectionModal.js";
-import { createSettingsOverlay } from "./components/settingsOverlay.js";
-import { showToast } from "./components/toast.js";
-import { createBrowserCompatibilityModal, isBrowserCompatible } from "./components/browserCompatibilityModal.js";
-import { createPermissionBlockedModal, isPermissionBlockedError } from "./components/permissionBlockedModal.js";
-import { createErrorDetailModal, showSerialConnectionLostError, showPortInUseError } from "./components/errorDetailModal.js";
+import { createRecipientBar } from "./components/messaging/recipientBar.js";
+import { createMessageHistory } from "./components/messaging/messageHistory.js";
+import { createMessageInput } from "./components/messaging/messageInput.js";
+import { createDeviceListOverlay } from "./components/overlays/deviceListOverlay.js";
+import { createMessageDetailsOverlay } from "./components/overlays/messageDetailsOverlay.js";
+import { createConnectionWarningModal } from "./components/modals/connectionWarningModal.js";
+import { showConnectionModal } from "./components/modals/connectionModal.js";
+import { createSettingsOverlay } from "./components/overlays/settingsOverlay.js";
+import { showToast } from "./components/common/toast.js";
+import { createBrowserCompatibilityModal, isBrowserCompatible } from "./components/modals/browserCompatibilityModal.js";
+import { createPermissionBlockedModal, isPermissionBlockedError } from "./components/modals/permissionBlockedModal.js";
+import { createErrorDetailModal, showSerialConnectionLostError, showPortInUseError } from "./components/modals/errorDetailModal.js";
 
 /**
  * Unified error handler for Python backend responses.

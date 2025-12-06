@@ -3,7 +3,7 @@
  * App settings including device scanning toggle
  */
 
-import { state, setState } from '../state/store.js';
+import { state, setState } from '../../state/store.js';
 
 export function createSettingsOverlay(onBack) {
     const overlay = document.createElement('div');

@@ -2,9 +2,9 @@
  * Playground Control App - Message Details Overlay
  */
 
-import { getCommandIcon, getDeviceIcon } from './icons.js';
-import { getRelativeTime, getDeviceType } from '../utils/helpers.js';
-import { getCommandLabel } from '../utils/constants.js';
+import { getCommandIcon, getDeviceIcon } from '../common/icons.js';
+import { getRelativeTime, getDeviceType } from '../../utils/helpers.js';
+import { getCommandLabel } from '../../utils/constants.js';
 
 export function createMessageDetailsOverlay(message, nicknames, onClose, onResend) {
   const overlay = document.createElement('div');

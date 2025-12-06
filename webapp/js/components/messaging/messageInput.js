@@ -42,9 +42,9 @@
  * 
  */
 
-import { getCommandIcon, createIcon } from "./icons.js";
-import { COMMANDS, getCommandLabel, getCommandById } from "../utils/constants.js";
-import { createCommandInfoOverlay } from "./commandInfoOverlay.js";
+import { getCommandIcon, createIcon } from "../common/icons.js";
+import { COMMANDS, getCommandLabel, getCommandById } from "../../utils/constants.js";
+import { createCommandInfoOverlay } from "../overlays/commandInfoOverlay.js";
 
 export function createMessageInput(currentMessage, showPalette, canSend, onInputClick, onCommandSelect, onClearMessage, onSendMessage, flashMessageBox) {
     const container = document.createElement("div");

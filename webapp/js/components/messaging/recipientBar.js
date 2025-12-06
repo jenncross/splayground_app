@@ -37,11 +37,11 @@
  * 
  */
 
-import { getDeviceIcon } from './icons.js';
-import { getRangeLabel } from '../state/store.js';
-import { getRelativeTime } from '../utils/helpers.js';
-import { createBluetoothStatusButton } from './bluetoothStatusButton.js';
-import { createSettingsButton } from './settingsButton.js';
+import { getDeviceIcon } from '../common/icons.js';
+import { getRangeLabel } from '../../state/store.js';
+import { getRelativeTime } from '../../utils/helpers.js';
+import { createBluetoothStatusButton } from '../connection/bluetoothStatusButton.js';
+import { createSettingsButton } from '../common/settingsButton.js';
 
 export function createRecipientBar(devices, range, lastUpdateTime, onRangeChange, onClick, onRefresh, hubConnected, hubDeviceName, onHubConnect, onHubDisconnect, onSettingsClick, isRefreshing = false, pythonReady = true, deviceScanningEnabled = false, isBrowserCompatible = true) {
   const container = document.createElement('div');

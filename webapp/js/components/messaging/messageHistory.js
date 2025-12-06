@@ -2,12 +2,12 @@
  * Playground Control App - Message History Component
  */
 
-import { getCommandIcon } from './icons.js';
-import { getRelativeTime, countDevicesByType } from '../utils/helpers.js';
-import { getCommandLabel } from '../utils/constants.js';
-import { createWelcomeState } from './welcomeState.js';
-import { createConnectedEmptyState } from './connectedEmptyState.js';
-import HubSetupModal from './hubSetupModal.js';
+import { getCommandIcon } from '../common/icons.js';
+import { getRelativeTime, countDevicesByType } from '../../utils/helpers.js';
+import { getCommandLabel } from '../../utils/constants.js';
+import { createWelcomeState } from '../states/welcomeState.js';
+import { createConnectedEmptyState } from '../states/connectedEmptyState.js';
+import HubSetupModal from '../modals/hubSetupModal.js';
 
 export function createMessageHistory(messages, onMessageClick, hubConnected = false, onHubConnect = null, connectionMode = 'ble', pythonReady = false) {
   const container = document.createElement('div');

@@ -5,7 +5,7 @@
  * This file dynamically creates icons based on that configuration
  */
 
-import { COMMANDS } from "../utils/constants.js";
+import { COMMANDS } from "../../utils/constants.js";
 
 export function createIcon(name, className = "w-4 h-4") {
     const i = document.createElement("i");

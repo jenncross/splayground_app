@@ -9,22 +9,37 @@ name = "Playground App Front End V0"
 "js/utils/constants.js" = "./js/utils/constants.js"
 "js/utils/helpers.js" = "./js/utils/helpers.js"
 "js/utils/pyBridge.js" = "./js/utils/pyBridge.js"
-"js/components/icons.js" = "./js/components/icons.js"
-"js/components/recipientBar.js" = "./js/components/recipientBar.js"
-"js/components/messageHistory.js" = "./js/components/messageHistory.js"
-"js/components/messageInput.js" = "./js/components/messageInput.js"
-"js/components/deviceListOverlay.js" = "./js/components/deviceListOverlay.js"
-"js/components/messageDetailsOverlay.js" = "./js/components/messageDetailsOverlay.js"
-"js/components/hubConnectionBar.js" = "./js/components/hubConnectionBar.js"
-"js/components/bluetoothStatusButton.js" = "./js/components/bluetoothStatusButton.js"
-"js/components/settingsButton.js" = "./js/components/settingsButton.js"
-"js/components/settingsOverlay.js" = "./js/components/settingsOverlay.js"
-"js/components/connectionWarningModal.js" = "./js/components/connectionWarningModal.js"
-"js/components/connectionModal.js" = "./js/components/connectionModal.js"
-"js/components/connectedEmptyState.js" = "./js/components/connectedEmptyState.js"
-"js/components/welcomeState.js" = "./js/components/welcomeState.js"
-"js/components/hubSetupModal.js" = "./js/components/hubSetupModal.js"
-"js/components/toast.js" = "./js/components/toast.js"
+# Components - Common
+"js/components/common/icons.js" = "./js/components/common/icons.js"
+"js/components/common/settingsButton.js" = "./js/components/common/settingsButton.js"
+"js/components/common/toast.js" = "./js/components/common/toast.js"
+
+# Components - Messaging
+"js/components/messaging/recipientBar.js" = "./js/components/messaging/recipientBar.js"
+"js/components/messaging/messageHistory.js" = "./js/components/messaging/messageHistory.js"
+"js/components/messaging/messageInput.js" = "./js/components/messaging/messageInput.js"
+
+# Components - Overlays
+"js/components/overlays/deviceListOverlay.js" = "./js/components/overlays/deviceListOverlay.js"
+"js/components/overlays/messageDetailsOverlay.js" = "./js/components/overlays/messageDetailsOverlay.js"
+"js/components/overlays/settingsOverlay.js" = "./js/components/overlays/settingsOverlay.js"
+"js/components/overlays/commandInfoOverlay.js" = "./js/components/overlays/commandInfoOverlay.js"
+
+# Components - Modals
+"js/components/modals/connectionWarningModal.js" = "./js/components/modals/connectionWarningModal.js"
+"js/components/modals/connectionModal.js" = "./js/components/modals/connectionModal.js"
+"js/components/modals/hubSetupModal.js" = "./js/components/modals/hubSetupModal.js"
+"js/components/modals/browserCompatibilityModal.js" = "./js/components/modals/browserCompatibilityModal.js"
+"js/components/modals/permissionBlockedModal.js" = "./js/components/modals/permissionBlockedModal.js"
+"js/components/modals/errorDetailModal.js" = "./js/components/modals/errorDetailModal.js"
+
+# Components - Connection
+"js/components/connection/hubConnectionBar.js" = "./js/components/connection/hubConnectionBar.js"
+"js/components/connection/bluetoothStatusButton.js" = "./js/components/connection/bluetoothStatusButton.js"
+
+# Components - States
+"js/components/states/connectedEmptyState.js" = "./js/components/states/connectedEmptyState.js"
+"js/components/states/welcomeState.js" = "./js/components/states/welcomeState.js"
 
 # Hub firmware files
 "hubCode/manifest.js" = "./hubCode/manifest.js"

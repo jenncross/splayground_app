@@ -6,8 +6,8 @@
  * - Serial (USB) - Wired, requires Web Serial API (Chrome/Edge only)
  */
 
-import { setState } from "../state/store.js";
-import { PyBridge } from "../utils/pyBridge.js";
+import { setState } from "../../state/store.js";
+import { PyBridge } from "../../utils/pyBridge.js";
 
 export function createConnectionModal() {
     const modal = document.createElement('div');
