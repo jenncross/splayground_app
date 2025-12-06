@@ -56,9 +56,11 @@ name = "Playground App Front End V0"
 "hubCode/utilities/lc709203f.py" = "./hubCode/utilities/lc709203f.py"
 "hubCode/utilities/secrets.py" = "./hubCode/utilities/secrets.py"
 
-# Python modules
-"mpy/webBluetooth.py" = "./mpy/webBluetooth.py"
-"mpy/webSerial.py" = "./mpy/webSerial.py"
+# Python modules (refactored)
+"mpy/hub_bluetooth.py" = "./mpy/hub_bluetooth.py"
+"mpy/hub_serial.py" = "./mpy/hub_serial.py"
+"mpy/repl_controller.py" = "./mpy/repl_controller.py"
+"mpy/firmware_manager.py" = "./mpy/firmware_manager.py"
 
 # Install packages to be used in this project
 # packages = ["pandas"]

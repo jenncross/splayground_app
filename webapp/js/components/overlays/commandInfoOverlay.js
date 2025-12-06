@@ -1,21 +1,7 @@
 /**
- * Smart Playground Control - Command Info Overlay Component
+ * Command Info Overlay
  * 
- * This component displays helpful information about each command when the user
- * presses the info icon next to a command button.
- * 
- * Key Features:
- * - Centered modal overlay with command description
- * - Shows command icon for visual reference
- * - Closes via X button or clicking outside
- * - Smooth fade-in/fade-out animations
- * - Mobile-optimized for small viewport (max-w-md)
- * 
- * Props:
- * - commandLabel: The display name of the command
- * - commandDescription: The description text to show
- * - commandIcon: The icon element to display
- * - onClose: Callback when overlay should be closed
+ * Modal showing command description. Click outside or X to close.
  */
 
 export function createCommandInfoOverlay(commandLabel, commandDescription, commandIcon, onClose) {

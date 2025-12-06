@@ -1,18 +1,10 @@
 /**
- * Bluetooth Adapter - Native JavaScript Web Bluetooth API wrapper
+ * Bluetooth Adapter - Web Bluetooth API wrapper
+ *
+ * Native JavaScript layer for Web Bluetooth API (Nordic UART Service).
+ * Handles BLE connect/disconnect, notifications, and GATT services.
  * 
- * This module provides a thin JavaScript layer over the Web Bluetooth API,
- * handling all Promise-based operations natively to avoid Pyodide async issues.
- * 
- * Implements Nordic UART Service for ESP32 communication.
- * 
- * Key responsibilities:
- * - Connect/disconnect to BLE devices
- * - Read/write data with native Promise handling
- * - Notification handling
- * - GATT service management
- * 
- * Used by: Python's webBluetooth.py (thin wrapper that calls these functions)
+ * Used by: mpy/hub_bluetooth.py
  */
 
 export const BluetoothAdapter = {

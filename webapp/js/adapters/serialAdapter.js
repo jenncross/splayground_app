@@ -1,16 +1,10 @@
 /**
- * Serial Adapter - Native JavaScript Web Serial API wrapper
+ * Serial Adapter - Web Serial API wrapper
+ *
+ * Native JavaScript layer for Web Serial API (avoids Pyodide async issues).
+ * Handles connect/disconnect, read/write, timeouts, and reader/writer locks.
  * 
- * This module provides a thin JavaScript layer over the Web Serial API,
- * handling all Promise-based operations natively to avoid Pyodide async issues.
- * 
- * Key responsibilities:
- * - Connect/disconnect to serial ports
- * - Read/write data with native Promise handling
- * - Timeout management using Promise.race
- * - Reader/Writer lock management
- * 
- * Used by: Python's webSerial.py (thin wrapper that calls these functions)
+ * Used by: mpy/hub_serial.py
  */
 
 export const SerialAdapter = {

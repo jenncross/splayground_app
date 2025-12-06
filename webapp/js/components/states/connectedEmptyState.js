@@ -1,13 +1,7 @@
 /**
  * Connected Empty State Component
  * 
- * Displays helpful instructions when the hub is connected but no messages
- * have been sent yet. Guides users to use the send command field.
- * 
- * For Serial connections, also shows option to flash hub firmware.
- * 
- * This helps users understand how to start sending commands after
- * successfully connecting their hub.
+ * Instructions shown when hub is connected but no commands sent yet.
  */
 
 export function createConnectedEmptyState(onFocusCommandField) {

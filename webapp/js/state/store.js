@@ -1,30 +1,10 @@
 /**
- * Smart Playground Control - Centralized State Management
+ * Centralized State Management
  *
- * This module implements a reactive state management system for the application.
- * It provides centralized state storage with automatic component re-rendering
- * when state changes occur, similar to Redux or Vuex but simpler and lighter.
- *
- * Key Features:
- * - Centralized application state in a single object
- * - Reactive updates - components automatically re-render on state changes
- * - Batched rendering using requestAnimationFrame for performance
- * - Computed values for derived state (device filtering, RSSI calculations)
- * - Component registration system for state change notifications
- * - Optimized updates for specific state changes (e.g., refresh animations)
- *
- * State Structure:
- * - Device management: allDevices, range, moduleNicknames, lastUpdateTime
- * - Connection status: hubConnected, hubDeviceName, hubConnecting
- * - UI state: overlays, modals, input states, refresh status
- * - Message system: messageHistory, currentMessage, command palette
- *
- * Usage Pattern:
- * 1. Components register with onStateChange() to receive updates
- * 2. Components call setState() to update state and trigger re-renders
- * 3. Computed functions provide derived values (getAvailableDevices, getRangeLabel)
- * 4. State changes automatically propagate to all registered components
- *
+ * Reactive state with automatic component re-rendering.
+ * Uses batched rendering (requestAnimationFrame) for performance.
+ * 
+ * Usage: setState() to update, onStateChange() to listen, computed getters for derived values.
  */
 
 export const state = {

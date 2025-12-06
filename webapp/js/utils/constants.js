@@ -1,25 +1,8 @@
 /**
- * Smart Playground Control - Application Constants
+ * Application Constants
  * 
- * This module defines all constant values used throughout the application,
- * including command definitions, colors, icons, and configuration values.
- * Centralizing constants here makes the application easier to maintain
- * and allows for consistent theming and behavior.
- * 
- * Key Constants:
- * - COMMANDS: Available playground commands with styling, icons, and descriptions
- * - Command properties: id, label, background color, icon, text color, description
- * 
- * Command Configuration:
- * - All command data is loaded from commands.json
- * - To add/edit commands, simply update commands.json
- * - Each command includes a description for the info overlay
- * 
- * Usage:
- * - Import COMMANDS array for command palette generation
- * - Use consistent command IDs throughout application
- * - Colors, icons, and descriptions are defined in commands.json for easy updates
- * 
+ * Command definitions loaded from commands.json.
+ * Update commands.json to add/edit commands.
  */
 
 // Load commands from JSON configuration file

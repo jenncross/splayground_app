@@ -1,11 +1,7 @@
 /**
  * Welcome State Component
  * 
- * Displays helpful onboarding instructions when the app first loads
- * and no hub is connected. Guides users through the first connection.
- * 
- * This replaces the empty "No messages sent yet" placeholder with
- * actionable guidance to help users get started quickly.
+ * Onboarding instructions when no hub is connected.
  */
 
 import HubSetupModal from '../modals/hubSetupModal.js';

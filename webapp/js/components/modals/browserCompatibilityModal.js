@@ -1,21 +1,8 @@
 /**
- * Browser Compatibility Modal Component
+ * Browser Compatibility Modal
  * 
- * Displays a blocking modal when the browser doesn't support required Web APIs.
- * This modal cannot be dismissed and guides users to use a compatible browser.
- * 
- * Required APIs:
- * - Web Serial API (for USB hub connection)
- * 
- * Compatible Browsers:
- * - Chrome/Chromium 89+
- * - Edge 89+
- * - Opera 75+
- * 
- * Incompatible Browsers:
- * - Firefox (no Web Serial support)
- * - Safari (no Web Serial support)
- * - Mobile browsers (limited support)
+ * Blocking modal for browsers without Web Serial API.
+ * Requires Chrome/Edge 89+, Opera 75+ on desktop.
  */
 
 export function createBrowserCompatibilityModal() {

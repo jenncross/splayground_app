@@ -1,31 +1,25 @@
 /**
  * Smart Playground Control - Main Application Controller
  * 
- * This module contains the main App class that orchestrates the entire frontend application.
- * It manages the component rendering, state synchronization, and
- * communication with the Python backend via PyBridge.
+ * Main App class orchestrating the frontend application. Manages component
+ * rendering, state synchronization, and Python backend communication.
  * 
  * Key Responsibilities:
- * - Application initialization and Python backend integration
- * - Component lifecycle management and DOM rendering
- * - State management coordination with reactive updates
- * - Event handling for user interactions and system events
- * - BLE connection management and device communication
- * - Error handling and user feedback via toasts and modals
+ * - App initialization and Python integration
+ * - Component lifecycle and DOM rendering
+ * - State coordination with reactive updates
+ * - Event handling and connection management
+ * - Error handling and user feedback
  * 
  * Architecture:
- * - Single App class managing entire application state
- * - Component-based UI with functional component pattern
- * - Reactive rendering triggered by state changes
- * - Event-driven communication with Python backend
- * - Mobile-first responsive design with touch optimizations
+ * - Functional component pattern with reactive state
+ * - Event-driven Python-JavaScript communication
+ * - Mobile-first responsive design
  * 
  * Dependencies:
- * - state/store.js: Centralized state management
- * - utils/pyBridge.js: Python-JavaScript communication bridge
- * - components/*: UI component modules
- * - utils/helpers.js: Utility functions
- * 
+ * - state/store.js (centralized state)
+ * - utils/pyBridge.js (Python bridge)
+ * - components/* (UI modules)
  */
 
 import { state, setState, getAvailableDevices, onStateChange } from "./state/store.js";
@@ -45,7 +39,6 @@ import { createMessageInput } from "./components/messaging/messageInput.js";
 import { createDeviceListOverlay } from "./components/overlays/deviceListOverlay.js";
 import { createMessageDetailsOverlay } from "./components/overlays/messageDetailsOverlay.js";
 import { createConnectionWarningModal } from "./components/modals/connectionWarningModal.js";
-import { showConnectionModal } from "./components/modals/connectionModal.js";
 import { createSettingsOverlay } from "./components/overlays/settingsOverlay.js";
 import { showToast } from "./components/common/toast.js";
 import { createBrowserCompatibilityModal, isBrowserCompatible } from "./components/modals/browserCompatibilityModal.js";
@@ -55,13 +48,9 @@ import { createErrorDetailModal, showSerialConnectionLostError, showPortInUseErr
 /**
  * Unified error handler for Python backend responses.
  * 
- * This function provides consistent error handling across all Python function calls.
- * It distinguishes between real errors (which should show toasts) and user-initiated
- * cancellations (which should be handled silently).
- * 
  * @param {Object} result - Python function result with status field
  * @param {string} context - Context description for logging
- * @returns {boolean} - True if handled as error, false if normal operation
+ * @returns {boolean} - True if error, false if normal operation
  */
 function handleError(result, context) {
     if (!result || !result.status) {
@@ -99,13 +88,9 @@ function handleError(result, context) {
 }
 
 /**
- * Synchronize connection state with Python backend.
+ * Sync connection state with Python backend (polls status and updates state).
  * 
- * This function polls the Python backend to get the actual BLE connection status
- * and updates the JavaScript state accordingly. It's called after connection
- * operations and can be used for auto-disconnect detection.
- * 
- * @returns {Promise<boolean>} - True if state was updated, false if no change
+ * @returns {Promise<boolean>} - True if state changed
  */
 async function syncConnectionState() {
     try {
@@ -156,29 +141,7 @@ class App {
 
     async init() {
         /**
-         * Initialize the application and set up all core systems.
-         * 
-         * This method handles the complete application startup sequence including:
-         * - Browser compatibility checking for Web Serial API
-         * - Setting up Python backend integration and event handlers
-         * - Registering state change listeners for reactive updates
-         * - Configuring click-outside handlers for UI interactions
-         * - Performing initial render of all components
-         * 
-         * Initialization Flow:
-         * 1. Check browser compatibility (Web Serial API)
-         * 2. Initialize with empty device list
-         * 3. Set up direct function callbacks for Python integration
-         * 4. Register event listeners for Python backend events
-         * 5. Set up state management and reactive rendering
-         * 6. Initialize Python backend when ready
-         * 7. Render initial UI components
-         * 
-         * Error Handling:
-         * - Show blocking modal for incompatible browsers
-         * - Graceful fallback if Python unavailable
-         * - Comprehensive logging for debugging initialization issues
-         * - Continues operation even if some systems fail to initialize
+         * Initialize app: check compatibility, setup callbacks, register events, render UI.
          */
         // Check browser compatibility first
         const browserCompatible = isBrowserCompatible();
@@ -325,23 +288,7 @@ class App {
 
     startConnectionMonitoring() {
         /**
-         * Start auto-disconnect detection by polling Python backend.
-         * 
-         * IMPORTANT: Polling paused during ESP-NOW device scans to prevent
-         * BLE traffic from interfering with ESP-NOW IRQ on ESP32-C3's shared radio.
-         * 
-         * This method sets up a polling mechanism that checks the actual BLE
-         * connection status every 30 seconds when connected AND not scanning.
-         * It helps detect unexpected disconnections that might not trigger the
-         * normal disconnect callbacks.
-         * 
-         * Timing rationale:
-         * - 30 second interval (was 5s) reduces BLE traffic by 6x
-         * - Skips polling during device scans (isRefreshing flag)
-         * - Only logs when state actually changes (reduces noise)
-         * 
-         * Note: Interval runs for application lifetime. This is acceptable for MVP.
-         * For production, consider storing interval ID and clearing on app cleanup.
+         * Poll connection status every 30s (paused during scans to avoid radio interference).
          */
         // Clear any existing monitor to prevent duplicates
         if (this.connectionMonitor) {
@@ -659,38 +606,7 @@ class App {
 
     async handleSendMessage() {
         /**
-         * Handle command transmission to playground modules with comprehensive validation.
-         * 
-         * This method implements a priority-based validation system to ensure commands
-         * are only sent when all prerequisites are met. It handles connection checking,
-         * device availability validation, command selection verification, and actual
-         * command transmission via the BLE hub.
-         * 
-         * Validation Priority Order:
-         * 1. PRIORITY 1: Hub connection status (must be connected)
-         * 2. PRIORITY 2: Device availability (must have devices in range)
-         * 3. PRIORITY 3: Command selection (must have selected a command)
-         * 
-         * Process Flow:
-         * 1. Check BLE hub connection, show warning modal if disconnected
-         * 2. Verify devices are available within selected range
-         * 3. Validate command selection, open palette if needed
-         * 4. Refresh device list to ensure current data
-         * 5. Warn user if device count changed during refresh
-         * 6. Format and send command via BLE to hub
-         * 7. Update message history and clear input
-         * 
-         * Error Handling:
-         * - Connection warnings with modal prompts
-         * - Device availability checks with user feedback
-         * - Command validation with visual feedback (flashing)
-         * - BLE transmission error handling with toast notifications
-         * 
-         * User Experience:
-         * - Progressive disclosure of requirements (connection → devices → command)
-         * - Visual feedback for all validation states
-         * - Confirmation prompts for potentially destructive actions
-         * - Automatic state cleanup after successful transmission
+         * Send command to modules (validates connection, devices, command; updates history).
          */
         // PRIORITY 1: Check hub connection first
         if (!state.hubConnected) {
@@ -779,35 +695,10 @@ class App {
 
     async handleRefreshDevices(rssiThreshold = null, retryCount = 0) {
         /**
-         * Refresh device list from ESP32 hub with RSSI-based filtering.
+         * Refresh device list with RSSI filter (7s timeout, auto-retries GATT errors).
          * 
-         * This method performs a device discovery cycle by sending a PING command
-         * with an RSSI threshold to the hub. Only modules that can receive the hub's
-         * broadcast at the specified signal strength will respond.
-         * 
-         * IMPORTANT: Filtering happens at the module level, not client-side!
-         * - Hub broadcasts PING with RSSI threshold
-         * - Only modules with strong enough signal respond
-         * - This ensures modules CAN receive commands at that strength
-         * 
-         * Parameters:
-         * -----------
-         * rssiThreshold : int or null
-         *     RSSI threshold in dBm (e.g., -60)
-         *     If null, uses current slider position converted to RSSI
-         * retryCount : int (internal)
-         *     Number of retry attempts so far
-         * 
-         * Visual Feedback:
-         * - Shows loading spinner during entire ping/response cycle
-         * - Maximum 7 second timeout per attempt (5s scan + 2s buffer)
-         * - Loading state shown in recipient bar and device list overlay
-         * 
-         * Error Handling:
-         * - GATT errors: Automatically retries up to MAX_GATT_RETRIES times with 1s delays
-         * - Empty device lists: No retry (legitimate result)
-         * - Timeout per attempt: 7 seconds (hub scans for 5s + buffer for response)
-         * - Silent retries (no user interruption)
+         * @param {number|null} rssiThreshold - RSSI in dBm or null for current slider value
+         * @param {number} retryCount - Internal retry counter
          */
         
         // Skip device scanning if disabled in settings

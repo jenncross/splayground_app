@@ -1,13 +1,7 @@
 /**
- * Error Detail Modal Component
+ * Error Detail Modal
  * 
- * Displays detailed error messages with troubleshooting steps.
- * Used for errors that need more reading time than a toast can provide.
- * 
- * This is different from simple toasts - use this for:
- * - Connection errors with detailed causes and solutions
- * - Debugging information users need to read carefully
- * - Multi-step troubleshooting guidance
+ * Detailed error messages with troubleshooting steps (for errors needing more than a toast).
  */
 
 import { setState } from "../../state/store.js";

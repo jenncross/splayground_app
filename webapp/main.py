@@ -1,29 +1,27 @@
 """
 Smart Playground Control - Python Backend
 
-This module serves as the PyScript backend for the Smart Playground Control application.
-It handles Bluetooth Low Energy (BLE) communication with ESP32 hub devices and manages
-the ESP-NOW protocol for communicating with playground modules.
+PyScript backend for Smart Playground Control. Handles BLE/Serial communication
+with ESP32 hub devices and manages ESP-NOW protocol for playground modules.
 
 Key Responsibilities:
-- BLE connection management with ESP32C6 hub using Nordic UART Service
-- Device discovery and RSSI-based filtering of playground modules
-- Command transmission and response handling via ESP-NOW protocol
-- Data parsing and format conversion between JSON and JavaScript objects
-- Event dispatching to JavaScript frontend for real-time UI updates
+- Connection management (Serial USB primary, BLE legacy)
+- Device discovery and RSSI-based filtering
+- Command transmission and response handling
+- JSON/JavaScript data conversion
+- Event dispatching to frontend
 
 Communication Flow:
-1. Web app connects to ESP32 hub via BLE (Nordic UART Service)
-2. Hub broadcasts commands to playground modules via ESP-NOW
-3. Modules respond with status/sensor data back through hub
-4. Hub forwards responses to web app via BLE notifications
-5. Python backend parses responses and updates JavaScript frontend
+1. Connect to ESP32 hub via Serial (USB) or BLE (Nordic UART)
+2. Hub broadcasts commands to modules via ESP-NOW
+3. Modules respond through hub
+4. Backend parses and updates frontend
 
 Dependencies:
-- PyScript/Pyodide for browser Python execution
-- webBluetooth.py for Web Bluetooth API wrapper
-- JavaScript bridge for frontend communication
-
+- PyScript 2024.1.1 (browser Python execution)
+- mpy/hub_serial.py, hub_bluetooth.py, repl_controller.py, firmware_manager.py
+- js/adapters/serialAdapter.js, bluetoothAdapter.js (browser APIs)
+- js/utils/pyBridge.js (JavaScript-Python bridge)
 """
 
 from pyscript import document, window
@@ -47,13 +45,17 @@ if not hasattr(window, 'bluetoothAdapter'):
 
 console.log("✅ JavaScript adapters detected")
 
-# Import WebBLE class
-from mpy.webBluetooth import WebBLE
-ble = WebBLE()  # Create BLE instance (thin wrapper over bluetoothAdapter)
+# Import new refactored modules
+from mpy.hub_bluetooth import BluetoothConnection
+from mpy.hub_serial import SerialConnection
+from mpy.repl_controller import ReplController
+from mpy.firmware_manager import FirmwareManager
 
-# Import WebSerial class
-from mpy.webSerial import WebSerial
-serial = WebSerial()  # Create Serial instance (thin wrapper over serialAdapter)
+# Create component instances
+ble = BluetoothConnection()
+serial = SerialConnection()
+repl = ReplController(serial)
+firmware = FirmwareManager(repl)
 
 # Set up serial callbacks (will be properly assigned after functions are defined)
 # These are forward-declared here and assigned at the bottom of the file
@@ -400,36 +402,10 @@ ble.on_data_callback = on_ble_data
 
 # BLE Connection Functions
 async def connect_hub():
-    """
-    Connect to ESP32C6 hub via Bluetooth Low Energy.
-    
-    This function initiates a BLE connection to an ESP32 hub device using the
-    Nordic UART Service. It handles device discovery, connection establishment,
-    and error management including user cancellation scenarios.
-    
-    Connection Process:
-    1. Use WebBLE to scan for devices with Nordic UART Service
-    2. Present device selection dialog to user
-    3. Establish GATT connection and service discovery
-    4. Set up notification handlers for incoming data
-    5. Update connection state and notify JavaScript frontend
+    """Connect to hub via BLE using Nordic UART Service (deprecated, use connect_hub_serial).
     
     Returns:
-    --------
-    dict : JavaScript object with connection result
-        - status: "success" | "cancelled" | "error"
-        - device: Device name if successful
-        - error: Error message if failed
-    
-    Error Handling:
-    - User cancellation is treated as normal operation (not an error)
-    - Connection failures are logged and reported to user
-    - Graceful fallback for various BLE error conditions
-    
-    Side Effects:
-    - Updates global ble_connected and hub_device_name variables
-    - Dispatches BLE connection events to JavaScript frontend
-    - Sets up data callback for ongoing communication
+        JavaScript object with status: "success"|"cancelled"|"error"
     """
     global ble_connected, hub_device_name
     
@@ -489,7 +465,7 @@ async def connect_hub():
             return js_result
 
 async def disconnect_hub():
-    """Disconnect from hub"""
+    """Disconnect from BLE hub (legacy, use disconnect_hub_serial)."""
     global ble_connected, hub_device_name, hub_connection_mode
     
     await ble.disconnect()
@@ -509,7 +485,7 @@ async def disconnect_hub():
     return js_result
 
 async def connect_hub_serial():
-    """Connect to hub via USB Serial"""
+    """Connect to hub via USB Serial (primary connection method)."""
     global serial_connected, hub_device_name, hub_connection_mode
     
     console.log("Attempting Serial connection...")
@@ -569,7 +545,7 @@ async def connect_hub_serial():
             return js_result
 
 async def disconnect_hub_serial():
-    """Disconnect from Serial hub"""
+    """Disconnect from Serial hub."""
     global serial_connected, hub_device_name, hub_connection_mode
     
     console.log("Disconnecting Serial...")
@@ -587,13 +563,7 @@ async def disconnect_hub_serial():
     return js_result
 
 def on_serial_data(data):
-    """
-    Handle incoming Serial data
-    
-    Serial data is line-delimited, can be:
-    - JSON messages (starting with '{')
-    - Debug/print statements from hub
-    """
+    """Handle incoming Serial data (line-delimited JSON or debug output)."""
     # Process the message (it will handle JSON vs debug message filtering)
     process_complete_message(data)
 
@@ -601,7 +571,7 @@ def on_serial_connection_lost():
     """
     Handle unexpected serial connection loss.
     
-    This is called by webSerial.py when the serial connection is lost
+    This is called by hub_serial.py when the serial connection is lost
     unexpectedly (not from user-initiated disconnect).
     """
     global serial_connected, hub_device_name, hub_connection_mode
@@ -618,35 +588,14 @@ def on_serial_connection_lost():
     console.log(f"serial.is_connected() = {serial.is_connected()}")
 
 async def send_command_to_hub(command, rssi_threshold="all"):
-    """
-    Send command to hub for ESP-NOW broadcast to playground modules.
+    """Send command to hub for ESP-NOW broadcast to modules.
     
-    This function formats and transmits commands to the ESP32 hub, which then
-    broadcasts them to playground modules via ESP-NOW protocol. The hub uses
-    RSSI thresholding to control which modules receive the command.
+    Args:
+        command: Command name (e.g., "play", "pause", "win")
+        rssi_threshold: "all" or "-XX" for RSSI >= -XX dBm
     
-    Parameters:
-    -----------
-    command : str
-        Command to send to modules (e.g., "play", "pause", "win", "off")
-    rssi_threshold : str, optional
-        RSSI filter for command broadcast:
-        - "all": Send to all modules regardless of signal strength
-        - "-XX": Send only to modules with RSSI >= -XX dBm
-        
     Returns:
-    --------
-    dict : JavaScript object with transmission result
-        - status: "sent" | "error"
-        - command: Original command if successful
-        - threshold: RSSI threshold used
-        - error: Error message if failed
-    
-    Communication Flow:
-    1. Format command according to hub protocol (BLE or Serial)
-    2. Send to hub
-    3. Hub broadcasts via ESP-NOW to modules within RSSI range
-    4. Modules execute command and may send responses back
+        JavaScript object with status: "sent"|"error"
     """
     # Check connection based on mode
     if hub_connection_mode == "serial":
@@ -660,7 +609,7 @@ async def send_command_to_hub(command, rssi_threshold="all"):
         # Format for Serial (JSON)
         cmd_obj = {"cmd": command, "rssi": rssi_threshold}
         message = json.dumps(cmd_obj)
-        success = await serial.send(message)
+        success = await serial.send_json(message)
         
     elif hub_connection_mode == "ble":
         if not ble.is_connected():
@@ -691,7 +640,7 @@ async def send_command_to_hub(command, rssi_threshold="all"):
     return js_result
 
 def get_connection_status():
-    """Get current connection status - Python is source of truth"""
+    """Return hub connection status (connected bool, mode, device name)."""
     # Check actual connection status based on mode
     if hub_connection_mode == "serial":
         actual_connected = serial.is_connected()
@@ -714,18 +663,13 @@ def get_connection_status():
     return js_result
 
 async def refresh_devices_from_hub(rssi_threshold="all"):
-    """
-    Request device list from hub with RSSI filtering.
+    """Request device list from hub with RSSI filtering.
     
-    Parameters:
-    -----------
-    rssi_threshold : str or int
-        RSSI threshold for device filtering:
-        - "all": Return all devices that respond (no filtering)
-        - "-XX": Only devices with RSSI >= -XX dBm will respond
-        
-    The filtering happens at the module level - only modules that can
-    receive the hub's broadcast at the specified RSSI will respond to the ping.
+    Args:
+        rssi_threshold: "all" for no filter, or "-XX" for RSSI >= -XX dBm
+    
+    Returns:
+        JavaScript array of device objects
     """
     global devices
     
@@ -741,7 +685,7 @@ async def refresh_devices_from_hub(rssi_threshold="all"):
         # Format for Serial (JSON)
         ping_obj = {"cmd": "PING", "rssi": threshold_str}
         ping_command = json.dumps(ping_obj)
-        await serial.send(ping_command)
+        await serial.send_json(ping_command)
         
     elif hub_connection_mode == "ble":
         if not ble.is_connected():
@@ -765,16 +709,15 @@ async def refresh_devices_from_hub(rssi_threshold="all"):
     # Convert Python list to JavaScript array using to_js()
     return to_js(devices, dict_converter=Object.fromEntries)
 
-# Legacy functions (for compatibility)
 def get_devices():
-    """Return list of available devices"""
+    """Return list of available devices (legacy, use refresh_devices_from_hub)."""
     console.log("Python: get_devices called")
     # Convert Python list to JavaScript array using to_js()
     return to_js(devices, dict_converter=Object.fromEntries)
 
 def refresh_devices():
-    """Refresh device list - requires BLE connection"""
-    console.log("Python: refresh_devices called")
+    """Refresh device list (deprecated, use refresh_devices_from_hub)."""
+    console.log("Python: refresh_devices called (deprecated)")
     
     if ble.is_connected():
         # Use BLE to get real device list
@@ -785,7 +728,7 @@ def refresh_devices():
         return []
 
 def send_command(command, device_ids):
-    """Send command to specific devices - requires BLE connection"""
+    """Send command to specific devices (legacy, use send_command_to_hub)."""
     console.log(f"Python: Sending '{command}' to {len(device_ids)} devices")
     
     if ble.is_connected():
@@ -809,17 +752,13 @@ def send_command(command, device_ids):
 # ============================================================================
 
 async def upload_firmware(files_json):
-    """
-    Upload hub firmware files to ESP32
+    """Upload hub firmware files to ESP32.
     
-    Parameters:
-    -----------
-    files_json : list of dicts
-        [{"path": "main.py", "content": "..."}, ...]
+    Args:
+        files_json: List of {"path": str, "content": str} dicts
     
     Returns:
-    --------
-    JavaScript object with upload result and progress
+        JavaScript object with status and files_uploaded count
     """
     global serial_connected
     
@@ -833,11 +772,11 @@ async def upload_firmware(files_json):
     try:
         # Enter normal REPL mode (interrupt running code)
         console.log("Entering REPL mode...")
-        await serial.enter_repl_mode()
+        await repl.enter_repl_mode()
         
         # Enter raw REPL mode (needed for file upload operations)
         console.log("Entering raw REPL mode for file upload...")
-        await serial.enter_raw_repl_mode()
+        await repl.enter_raw_repl_mode()
         
         # Convert JS array to Python list
         files = []
@@ -872,10 +811,10 @@ async def upload_firmware(files_json):
             if len(dir_parts) > 1:
                 dir_path = "/".join(dir_parts[:-1])
                 if dir_path:
-                    await serial.ensure_directory(dir_path)
+                    await firmware.ensure_directory(dir_path)
             
             # Upload file
-            await serial.upload_file(file_path, content)
+            await firmware.upload_single_file(file_path, content)
             
             # Notify upload complete for this file
             if hasattr(window, 'onUploadProgress'):
@@ -888,17 +827,11 @@ async def upload_firmware(files_json):
         
         # Exit raw REPL mode back to normal REPL
         console.log("Exiting REPL mode...")
-        await serial.send_raw('\x02')  # Ctrl-B to exit raw REPL
-        await asyncio.sleep(0.3)
+        await repl.exit_raw_repl_mode()
         
-        # Start the uploaded main.py using paste mode
+        # Start the uploaded main.py
         console.log("Starting hub firmware...")
-        startup_code = "import main"
-        await serial.send_raw('\x05')  # Ctrl-E for paste mode
-        await asyncio.sleep(0.2)
-        await serial.send_raw(startup_code + '\n')
-        await serial.send_raw('\x04')  # Ctrl-D to execute
-        await asyncio.sleep(0.5)
+        await repl.execute_command("import main", timeout_ms=2000)
         
         console.log(f"✅ Upload complete: {total_files} files")
         console.log("Hub firmware is now running...")
@@ -916,7 +849,7 @@ async def upload_firmware(files_json):
         
         # Try to exit REPL mode on error
         try:
-            await serial.exit_repl_mode()
+            await repl.exit_raw_repl_mode()
         except:
             pass
         
@@ -926,11 +859,7 @@ async def upload_firmware(files_json):
         return js_result
 
 async def get_board_info():
-    """Get MicroPython board information
-    
-    Temporarily enters REPL mode, gets board info, then restarts JSON mode.
-    This ensures the device returns to normal operation.
-    """
+    """Get MicroPython board info (enters REPL, queries, returns to JSON mode)."""
     if not serial.is_connected():
         js_result = Object.new()
         js_result.status = "error"
@@ -939,18 +868,16 @@ async def get_board_info():
     
     try:
         # Enter normal REPL mode (stops JSON read loop, interrupts running code)
-        await serial.enter_repl_mode()
+        await repl.enter_repl_mode()
         
         # Get board info from normal REPL (no need for raw REPL)
-        info = await serial.get_board_info()
+        info = await repl.get_board_info()
         
-        # Exit raw REPL if we entered it, and restart JSON mode
-        await serial.exit_raw_repl_mode()
+        # Exit raw REPL if we entered it
+        await repl.exit_raw_repl_mode()
         
         # Restart JSON read loop to return to normal operation
-        await serial.release_reader_writer()
-        await serial.acquire_reader_writer()
-        serial.read_loop_task = asyncio.create_task(serial._read_loop())
+        serial._start_json_read_loop()
         
         js_result = Object.new()
         js_result.status = "success"
@@ -962,10 +889,8 @@ async def get_board_info():
         
         # Try to recover to JSON mode
         try:
-            await serial.exit_raw_repl_mode()
-            await serial.release_reader_writer()
-            await serial.acquire_reader_writer()
-            serial.read_loop_task = asyncio.create_task(serial._read_loop())
+            await repl.exit_raw_repl_mode()
+            serial._start_json_read_loop()
         except:
             pass
         
@@ -975,17 +900,7 @@ async def get_board_info():
         return js_result
 
 async def query_device_info_for_setup():
-    """Query device info from fresh serial connection for setup workflow
-    
-    Gets device info using normal REPL (not raw REPL) from a freshly
-    connected device. Does not assume JSON mode or try to return to it.
-    Used during hub setup to detect device type before firmware upload.
-    
-    Now properly awaits async _stop_json_read_loop() for complete cleanup.
-    
-    Returns device info string like:
-    "MicroPython v1.22.0 on 2024-01-01; ESP32-C6 with ESP32C6"
-    """
+    """Stop JSON read loop to prepare for board info query (setup workflow only)."""
     console.log("🔍 [query_device_info_for_setup] Starting device query...")
     
     if not serial.is_connected():
@@ -1020,14 +935,7 @@ async def query_device_info_for_setup():
         return js_result
 
 def get_device_board_info():
-    """Get board info after read loop has been stopped
-    
-    Simple synchronous call to get board info. Should be called after
-    query_device_info_for_setup() and a short delay handled by JavaScript.
-    
-    Returns device info string like:
-    "MicroPython v1.22.0 on 2024-01-01; ESP32-C6 with ESP32C6"
-    """
+    """Get board info after read loop stopped (call after query_device_info_for_setup)."""
     console.log("📡 [get_device_board_info] Getting board info...")
     
     if not serial.is_connected():
@@ -1038,10 +946,10 @@ def get_device_board_info():
         return js_result
     
     # Return a promise-like object that JavaScript can await
-    # This allows the async serial.get_board_info() to work properly
+    # This allows the async repl.get_board_info() to work properly
     async def _get_info():
         try:
-            info = await serial.get_board_info()
+            info = await repl.get_board_info()
             console.log(f"✅ [get_device_board_info] Got board info: {info}")
             
             js_result = Object.new()
@@ -1059,11 +967,7 @@ def get_device_board_info():
     return _get_info()
 
 async def execute_file_on_device(file_path):
-    """Execute a specific Python file on the connected device
-    
-    Temporarily enters REPL mode, executes the file, then restarts JSON mode.
-    This ensures the device returns to normal operation.
-    """
+    """Execute Python file on device (enters REPL, runs file, returns to JSON mode)."""
     if not serial.is_connected():
         js_result = Object.new()
         js_result.status = "error"
@@ -1072,21 +976,19 @@ async def execute_file_on_device(file_path):
     
     try:
         # Enter normal REPL mode (interrupt running code)
-        await serial.enter_repl_mode()
+        await repl.enter_repl_mode()
         
         # Enter raw REPL mode (needed for file execution)
-        await serial.enter_raw_repl_mode()
+        await repl.enter_raw_repl_mode()
         
         # Execute the file
-        output = await serial.execute_file(file_path)
+        output = await firmware.execute_file(file_path)
         
         # Exit raw REPL mode
-        await serial.exit_raw_repl_mode()
+        await repl.exit_raw_repl_mode()
         
         # Restart JSON read loop to return to normal operation
-        await serial.release_reader_writer()
-        await serial.acquire_reader_writer()
-        serial.read_loop_task = asyncio.create_task(serial._read_loop())
+        serial._start_json_read_loop()
         
         js_result = Object.new()
         js_result.status = "success"
@@ -1098,10 +1000,8 @@ async def execute_file_on_device(file_path):
         
         # Try to recover to JSON mode
         try:
-            await serial.exit_raw_repl_mode()
-            await serial.release_reader_writer()
-            await serial.acquire_reader_writer()
-            serial.read_loop_task = asyncio.create_task(serial._read_loop())
+            await repl.exit_raw_repl_mode()
+            serial._start_json_read_loop()
         except:
             pass
         
@@ -1111,11 +1011,7 @@ async def execute_file_on_device(file_path):
         return js_result
 
 async def soft_reset_device():
-    """Soft reset the connected device (MicroPython re-initialization)
-    
-    Performs a soft reset which re-initializes MicroPython but doesn't
-    reboot the hardware. Device will restart at the REPL prompt.
-    """
+    """Soft reset device (MicroPython re-init, no hardware reboot)."""
     if not serial.is_connected():
         js_result = Object.new()
         js_result.status = "error"
@@ -1124,10 +1020,10 @@ async def soft_reset_device():
     
     try:
         # Enter normal REPL mode (interrupt running code)
-        await serial.enter_repl_mode()
+        await repl.enter_repl_mode()
         
         # Perform soft reset (Ctrl-D from normal REPL)
-        await serial.soft_reset()
+        await firmware.soft_reset()
         
         # Device is now at normal REPL prompt (>>>)
         # Don't restart JSON mode - user may want to interact with REPL
@@ -1145,12 +1041,7 @@ async def soft_reset_device():
         return js_result
 
 async def hard_reset_device():
-    """Hard reset the connected device (full hardware reboot)
-    
-    Performs a hardware reset which reboots the ESP32.
-    Device will restart and run main.py automatically.
-    After reset, the serial connection needs to re-establish JSON mode.
-    """
+    """Hard reset device (full hardware reboot, runs main.py on restart)."""
     if not serial.is_connected():
         js_result = Object.new()
         js_result.status = "error"
@@ -1159,19 +1050,17 @@ async def hard_reset_device():
     
     try:
         # Enter normal REPL mode (interrupt running code)
-        await serial.enter_repl_mode()
+        await repl.enter_repl_mode()
         
         # Enter raw REPL mode (needed to execute machine.reset())
-        await serial.enter_raw_repl_mode()
+        await repl.enter_raw_repl_mode()
         
         # Perform hard reset (device will reboot)
-        await serial.hard_reset()
+        await firmware.hard_reset()
         
         # Device has rebooted and is running main.py
         # Restart JSON read loop to reconnect
-        await serial.release_reader_writer()
-        await serial.acquire_reader_writer()
-        serial.read_loop_task = asyncio.create_task(serial._read_loop())
+        serial._start_json_read_loop()
         
         js_result = Object.new()
         js_result.status = "success"
@@ -1183,9 +1072,7 @@ async def hard_reset_device():
         
         # Try to recover to JSON mode
         try:
-            await serial.release_reader_writer()
-            await serial.acquire_reader_writer()
-            serial.read_loop_task = asyncio.create_task(serial._read_loop())
+            serial._start_json_read_loop()
         except:
             pass
         

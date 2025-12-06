@@ -1,11 +1,7 @@
 /**
- * Permission Blocked Modal Component
+ * Permission Blocked Modal
  * 
- * Displays when the browser supports Web Serial API but the device selection
- * dialog is blocked by popup blockers, permissions, or security settings.
- * 
- * This is different from browser incompatibility - the browser CAN support it,
- * but something is preventing the permission prompt from appearing.
+ * Shows when browser supports Web Serial but permission dialog is blocked.
  */
 
 export function createPermissionBlockedModal(onDismiss, onRetry) {

@@ -14,10 +14,10 @@ Key Features:
 - Web Bluetooth API support for ESP32 communication
 
 Architecture:
-- PyScript backend (main.py) handles BLE communication
-- JavaScript frontend (main.js) manages UI components and state
-- Component-based UI with reactive state management
-- Event-driven communication between Python and JavaScript layers
+- PyScript backend (main.py) handles BLE/Serial communication
+- JavaScript frontend (main.js) manages UI and state
+- Functional component pattern with reactive state management
+- Event-driven Python-JavaScript communication via adapters
 
 Browser Requirements:
 - Chrome/Edge with Web Bluetooth API support
@@ -203,7 +203,7 @@ Browser Requirements:
     <!-- Version: v2.8 - Debug Logging for Device List Issues -->
     <script type="py" src="main.py?v=2.8" config="pyscript.toml"></script>
     
-    <!-- React Root -->
+    <!-- App Root Container -->
     <div id="root"></div>
     
     <!-- Footer Spacer -->
