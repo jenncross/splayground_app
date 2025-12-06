@@ -534,9 +534,10 @@ export class HubSetupModal {
             console.log('Loading hub files...');
             const files = await loadHubFiles();
             
-            // Modify main.py based on antenna configuration
+            // Modify main.py based on antenna and display configuration
             const mainPyFile = files.find(f => f.path === 'main.py');
             if (mainPyFile) {
+                // Antenna configuration
                 console.log(`Configuring antenna: external=${this.hasExternalAntenna}`);
                 if (!this.hasExternalAntenna) {
                     // Remove the antenna configuration line
@@ -547,6 +548,26 @@ export class HubSetupModal {
                     console.log('Removed external antenna configuration from main.py');
                 } else {
                     console.log('Keeping external antenna configuration in main.py');
+                }
+                
+                // Display I2C pin configuration
+                console.log(`Configuring display for device type: ${this.deviceType}`);
+                const beforeReplace = mainPyFile.content.includes('__DISPLAY_CONFIG_C6__');
+                console.log(`Before replace: contains display config markers: ${beforeReplace}`);
+                
+                if (this.deviceType === 'C3') {
+                    // Use C3 pins: SoftI2C on pins 7 (SCL), 6 (SDA)
+                    const newContent = mainPyFile.content.replace(
+                        /i2c = I2C\(scl=Pin\(23\), sda=Pin\(22\)\)  # __DISPLAY_CONFIG_C6__\s*\n\s*# i2c = SoftI2C\(scl=Pin\(7\), sda=Pin\(6\)\)  # __DISPLAY_CONFIG_C3__/,
+                        '# i2c = I2C(scl=Pin(23), sda=Pin(22))  # __DISPLAY_CONFIG_C6__\n            i2c = SoftI2C(scl=Pin(7), sda=Pin(6))  # __DISPLAY_CONFIG_C3__'
+                    );
+                    const didReplace = newContent !== mainPyFile.content;
+                    console.log(`Display config replacement ${didReplace ? 'SUCCEEDED' : 'FAILED'}`);
+                    mainPyFile.content = newContent;
+                    console.log('Configured display for C3: SoftI2C on pins 7 (SCL), 6 (SDA)');
+                } else {
+                    // Use C6/default pins: I2C on pins 23 (SCL), 22 (SDA)
+                    console.log('Configured display for C6: I2C on pins 23 (SCL), 22 (SDA)');
                 }
             }
             

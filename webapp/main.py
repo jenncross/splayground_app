@@ -32,6 +32,7 @@ from js import console, Object, Array
 import json
 import random
 import time
+import asyncio
 
 # Check if JavaScript adapters are loaded (hybrid architecture)
 if not hasattr(window, 'serialAdapter'):
@@ -885,16 +886,22 @@ async def upload_firmware(files_json):
                 progress.status = "uploaded"
                 window.onUploadProgress(progress)
         
-        # Hard reset device (full hardware reboot - this will run main.py)
-        console.log("Rebooting device...")
-        await serial.hard_reset()
+        # Exit raw REPL mode back to normal REPL
+        console.log("Exiting REPL mode...")
+        await serial.send_raw('\x02')  # Ctrl-B to exit raw REPL
+        await asyncio.sleep(0.3)
         
-        # Note: Don't call exit_repl_mode() after hard_reset
-        # The device has rebooted and is now running main.py
-        # The serial connection is still open but the device is no longer at REPL
+        # Start the uploaded main.py using paste mode
+        console.log("Starting hub firmware...")
+        startup_code = "import main"
+        await serial.send_raw('\x05')  # Ctrl-E for paste mode
+        await asyncio.sleep(0.2)
+        await serial.send_raw(startup_code + '\n')
+        await serial.send_raw('\x04')  # Ctrl-D to execute
+        await asyncio.sleep(0.5)
         
         console.log(f"✅ Upload complete: {total_files} files")
-        console.log("Device is rebooting and will start running hub firmware...")
+        console.log("Hub firmware is now running...")
         
         # Return success
         js_result = Object.new()

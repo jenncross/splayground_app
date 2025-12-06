@@ -21,7 +21,7 @@ ROW_HEIGHT = 10  # Pixels per line on 128x64 display (can fit 6 lines)
 MAX_DISPLAY_LINES = 6
 
 try:
-    from machine import I2C, Pin
+    from machine import I2C, SoftI2C, Pin
     import ssd1306
     DISPLAY_AVAILABLE = True
 except ImportError:
@@ -105,7 +105,10 @@ class HubDisplay:
         
         try:
             # Initialize I2C and display
-            i2c = I2C(scl=Pin(23), sda=Pin(22))
+            # C6: I2C on pins 23 (SCL), 22 (SDA)
+            # C3: SoftI2C on pins 7 (SCL), 6 (SDA)
+            i2c = I2C(scl=Pin(23), sda=Pin(22))  # __DISPLAY_CONFIG_C6__
+            # i2c = SoftI2C(scl=Pin(7), sda=Pin(6))  # __DISPLAY_CONFIG_C3__
             self.display = ssd1306.SSD1306_I2C(128, 64, i2c)
             self.display.fill(0)
             self.display.text("Hub Starting...", 2, 2, 1)

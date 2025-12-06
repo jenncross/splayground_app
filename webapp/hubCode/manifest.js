@@ -33,7 +33,11 @@ export async function loadHubFiles() {
     
     for (const fileInfo of HUB_FILES) {
         try {
-            const response = await fetch(baseUrl + fileInfo.path);
+            // Add cache busting to ensure we get the latest version
+            const cacheBuster = `?t=${Date.now()}`;
+            const response = await fetch(baseUrl + fileInfo.path + cacheBuster, {
+                cache: 'no-store'
+            });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }

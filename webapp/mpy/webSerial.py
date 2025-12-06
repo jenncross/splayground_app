@@ -277,7 +277,7 @@ class WebSerial:
         """
         await self.exit_raw_repl_mode()
     
-    async def execute_repl_command(self, code, timeout_ms=5000):
+    async def execute_repl_command(self, code, timeout_ms=5000, chunk_size=None):
         """Execute Python code in raw REPL mode
         
         Protocol:
@@ -289,6 +289,7 @@ class WebSerial:
         Args:
             code: Python code to execute
             timeout_ms: Maximum time to wait for response
+            chunk_size: If set, send code in chunks with delays (for older MicroPython)
         
         Raises:
             Exception if execution errors or timeout
@@ -298,8 +299,19 @@ class WebSerial:
         start_time = window.Date.now()
         
         try:
-            # Write the code
-            await self.send_raw(code)
+            # Write the code (chunked if requested for compatibility with older MicroPython)
+            if chunk_size:
+                # Send in chunks with pacing to avoid buffer overflow on C3/older devices
+                print(f"Sending {len(code)} bytes in {chunk_size}-byte chunks...")
+                for i in range(0, len(code), chunk_size):
+                    chunk = code[i:i+chunk_size]
+                    await self.send_raw(chunk)
+                    # 10ms delay between chunks (micro-repl's proven approach)
+                    await asyncio.sleep(0.01)
+                print(f"✓ All chunks sent")
+            else:
+                # Send all at once (fast path for newer MicroPython)
+                await self.send_raw(code)
             
             # Send CTRL-D to execute
             await self.send_raw('\x04')
@@ -463,9 +475,20 @@ print('OK')
 """
         
         try:
-            # Execute the upload command
+            # Use chunked upload for large files (> 2KB) to support older MicroPython
+            # Helps ESP32-C3 with limited RAM and older firmware versions
+            # Doesn't hurt newer devices (C6) - just slightly slower
             timeout_ms = max(5000, len(content) // 100)  # ~10KB/sec minimum
-            response = await self.execute_repl_command(upload_code, timeout_ms=timeout_ms)
+            chunk_size = 256 if len(upload_code) > 2048 else None
+            
+            if chunk_size:
+                print(f"Using chunked upload ({chunk_size} bytes/chunk) for compatibility")
+            
+            response = await self.execute_repl_command(
+                upload_code, 
+                timeout_ms=timeout_ms,
+                chunk_size=chunk_size
+            )
             
             # Check for OK response
             if 'OK' in response or not response:
