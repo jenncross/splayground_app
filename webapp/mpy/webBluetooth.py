@@ -1,19 +1,14 @@
-
 """
-Smart Playground Control - Web Bluetooth API Wrapper
+Smart Playground Control - Web Bluetooth API Wrapper (Hybrid Architecture)
+============================================================================
 
-This module provides a Python wrapper for the Web Bluetooth API, enabling
-PyScript applications to communicate with Bluetooth Low Energy (BLE) devices
-directly from the browser. It specifically implements the Nordic UART Service
-for communication with ESP32 devices.
+This module provides a Python wrapper around the JavaScript Bluetooth Adapter,
+keeping all business logic in Python while delegating browser API operations
+to native JavaScript to avoid Pyodide async issues.
 
-Key Features:
-- Web Bluetooth API integration for browser-based BLE communication
-- Nordic UART Service implementation for ESP32 compatibility
-- Automatic device discovery and connection management
-- Bidirectional data transmission (send/receive)
-- Event-driven notification handling for incoming data
-- Proper resource cleanup and memory management
+Architecture:
+- JavaScript (bluetoothAdapter.js): Handles all Web Bluetooth API operations
+- Python (this file): Contains all business logic, protocol handling, message formatting
 
 BLE Service Details:
 - Service UUID: 6e400001-b5a3-f393-e0a9-e50e24dcca9e (Nordic UART)
@@ -31,214 +26,155 @@ Communication Protocol:
 - Text-based messaging with newline termination
 - JSON format for structured data exchange
 - UTF-8 encoding for all text transmission
-- Automatic reconnection handling for reliability
 """
 
-# This code runs in the BROWSER using PyScript, not on the ESP32
 from pyscript import window
-import asyncio
+import json
 
 class WebBLE:
+    """Web Bluetooth API wrapper for BLE communication (thin Python layer)"""
+    
     def __init__(self):
-        # Nordic UART Service UUIDs (matching ble_ceeo_lib.py)
-        # MUST be lowercase for Web Bluetooth API
-        self.service_uuid = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
-        self.tx_uuid = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'  # RX from device perspective
-        self.rx_uuid = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'  # TX from device perspective
-        
-        self.device = None
-        self.server = None
-        self.service = None
-        self.tx_char = None  # For receiving notifications from ESP32
-        self.rx_char = None  # For writing to ESP32
+        """Initialize Bluetooth wrapper"""
         self.on_data_callback = None
+        print("📱 WebBLE initialized [v2024.12.05-hybrid]")
         
+        # Check if JS adapter is available
+        if not hasattr(window, 'bluetoothAdapter'):
+            raise Exception("bluetoothAdapter not found! Make sure js/adapters/bluetoothAdapter.js is loaded.")
+        
+        self.adapter = window.bluetoothAdapter
+        
+    def is_connected(self):
+        """Check if bluetooth device is connected"""
+        return self.adapter.isConnected()
+    
     async def connect(self, name_prefix='ESP32'):
-        """Connect to BLE device by name prefix"""
+        """Connect to BLE device by name prefix
+        
+        Args:
+            name_prefix: Device name prefix to filter (default 'ESP32')
+            
+        Returns:
+            bool: True if connected successfully
+        """
         try:
-            print("Requesting Bluetooth device...")
+            # Use JS adapter for connection
+            success = await self.adapter.connect(name_prefix)
             
-            # Check if Bluetooth is available
-            if not hasattr(window.navigator, 'bluetooth'):
-                print("ERROR: Web Bluetooth API not available!")
-                print("Make sure you are using Chrome/Edge and the page is HTTPS or localhost")
-                return False
-            
-            # Request device with filters
-            options = window.Object.new()
-            options.filters = [window.Object.new()]
-            options.filters[0].namePrefix = name_prefix
-            options.optionalServices = [self.service_uuid]
-            
-            print(f"Looking for devices with name prefix: {name_prefix}")
-            self.device = await window.navigator.bluetooth.requestDevice(options)
-            
-            if not self.device:
-                print("No device selected")
-                return False
+            if success:
+                # Set up notification handler
+                def on_notification(data):
+                    """Handle incoming notifications - business logic"""
+                    if not data:
+                        return
+                    
+                    print(f"Received: {data}")
+                    
+                    # Parse JSON messages
+                    try:
+                        # Data may contain multiple newline-separated messages
+                        lines = data.split('\n')
+                        for line in lines:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            
+                            message = json.loads(line)
+                            if self.on_data_callback:
+                                self.on_data_callback(message)
+                    except json.JSONDecodeError:
+                        # Not valid JSON, pass raw data to callback
+                        if self.on_data_callback:
+                            self.on_data_callback(data)
                 
-            print(f"Selected device: {self.device.name}")
+                # Start notifications with our handler
+                await self.adapter.startNotifications(on_notification)
+                
+                # Set up disconnection handler
+                def on_disconnect():
+                    print("Bluetooth device disconnected")
+                    # Could call a callback here if needed
+                
+                self.adapter.onDisconnected(on_disconnect)
+                
+                print("Bluetooth connected successfully")
             
-            # Connect to GATT server
-            print("Connecting to GATT server...")
-            self.server = await self.device.gatt.connect()
-            print("Connected to GATT server")
-            
-            # Get service
-            print(f"Getting service {self.service_uuid}...")
-            self.service = await self.server.getPrimaryService(self.service_uuid)
-            print("Got service")
-            
-            # Get characteristics
-            print("Getting characteristics...")
-            self.tx_char = await self.service.getCharacteristic(self.tx_uuid)
-            self.rx_char = await self.service.getCharacteristic(self.rx_uuid)
-            print("Got characteristics")
-            
-            # Start notifications
-            print("Starting notifications...")
-            await self.tx_char.startNotifications()
-            # Create proxy for event listener to prevent garbage collection
-            from pyodide.ffi import create_proxy
-            self.notification_proxy = create_proxy(self._on_notification)
-            self.tx_char.addEventListener('characteristicvaluechanged', self.notification_proxy)
-            print("Notifications started - Connected!")
-            
-            return True
+            return success
             
         except Exception as e:
-            # Handle specific user cancellation error
-            error_msg = str(e)
-            if ("User cancelled" in error_msg or 
-                "NotAllowedError" in error_msg or 
-                "AbortError" in error_msg or
-                "cancelled" in error_msg.lower()):
-                print("User cancelled BLE connection dialog - this is normal")
-                return False
-            else:
-                print(f"Connection error: {e}")
-                import traceback
-                traceback.print_exc()
-                return False
+            print(f"Bluetooth connection error: {e}")
+            return False
     
     async def connect_by_service(self):
-        """Connect to BLE device by service UUID - finds any device with Nordic UART service"""
-        try:
-            print("Requesting Bluetooth device by service UUID...")
-            
-            # Check if Bluetooth is available
-            if not hasattr(window.navigator, 'bluetooth'):
-                print("ERROR: Web Bluetooth API not available!")
-                return False
-            
-            # Request device filtering by service UUID only
-            options = window.Object.new()
-            options.filters = [window.Object.new()]
-            options.filters[0].services = [self.service_uuid]
-            
-            print(f"Looking for devices with service: {self.service_uuid}")
-            self.device = await window.navigator.bluetooth.requestDevice(options)
-            
-            if not self.device:
-                print("No device selected")
-                return False
-                
-            print(f"Selected device: {self.device.name}")
-            
-            # Connect to GATT server
-            print("Connecting to GATT server...")
-            self.server = await self.device.gatt.connect()
-            print("Connected to GATT server")
-            
-            # Get service
-            print(f"Getting service {self.service_uuid}...")
-            self.service = await self.server.getPrimaryService(self.service_uuid)
-            print("Got service")
-            
-            # Get characteristics
-            print("Getting characteristics...")
-            self.tx_char = await self.service.getCharacteristic(self.tx_uuid)
-            self.rx_char = await self.service.getCharacteristic(self.rx_uuid)
-            print("Got characteristics")
-            
-            # Start notifications
-            print("Starting notifications...")
-            await self.tx_char.startNotifications()
-            # Create proxy for event listener to prevent garbage collection
-            from pyodide.ffi import create_proxy
-            self.notification_proxy = create_proxy(self._on_notification)
-            self.tx_char.addEventListener('characteristicvaluechanged', self.notification_proxy)
-            print("Notifications started - Connected!")
-            
-            return True
-            
-        except Exception as e:
-            # Handle specific user cancellation error
-            error_msg = str(e)
-            if ("User cancelled" in error_msg or 
-                "NotAllowedError" in error_msg or 
-                "AbortError" in error_msg or
-                "cancelled" in error_msg.lower()):
-                print("User cancelled BLE connection dialog - this is normal")
-                return False
-            else:
-                print(f"Connection error: {e}")
-                import traceback
-                traceback.print_exc()
-                return False
-    
-    def _on_notification(self, event):
-        """Handle incoming notifications from ESP32"""
-        try:
-            value = event.target.value
-            # Convert DataView to string
-            decoder = window.TextDecoder.new()
-            text = decoder.decode(value)
-            print(f"Received: {text}")
-            
-            if self.on_data_callback:
-                self.on_data_callback(text)
-        except Exception as e:
-            print(f"Notification error: {e}")
+        """Connect to BLE device by service UUID
+        
+        Finds any device with Nordic UART service
+        
+        Returns:
+            bool: True if connected successfully
+        """
+        # For now, just use the name-based connection
+        # The JS adapter could be extended to support service-based filtering
+        print("Note: connect_by_service() currently uses name-based connection")
+        return await self.connect('ESP32')
     
     async def send(self, message):
-        """Send data to ESP32"""
-        if not self.rx_char:
+        """Send JSON message to device
+        
+        Business logic: Message formatting and JSON serialization
+        
+        Args:
+            message: JSON string or dict to send
+            
+        Returns:
+            bool: True if sent successfully
+        """
+        if not self.is_connected():
             print("Not connected!")
             return False
-            
+        
         try:
-            # Convert string to bytes
-            encoder = window.TextEncoder.new()
-            data = encoder.encode(message + "\n")
-            await self.rx_char.writeValue(data)
-            print(f"Sent: {message}")
+            # Convert dict to JSON string if needed
+            if isinstance(message, dict):
+                message = json.dumps(message)
+            
+            # Add newline terminator if not present
+            if not message.endswith('\n'):
+                message += '\n'
+            
+            # Send via JS adapter
+            await self.adapter.write(message)
+            print(f"Sent: {message.strip()}")
             return True
+            
         except Exception as e:
-            print(f"Send error: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Bluetooth send error: {e}")
             return False
     
     async def disconnect(self):
-        """Disconnect from device"""
+        """Disconnect from BLE device"""
         try:
-            if self.device and self.device.gatt.connected:
-                await self.device.gatt.disconnect()
-                print("Disconnected")
+            await self.adapter.disconnect()
+            print("Bluetooth disconnected")
+            return True
+            
         except Exception as e:
             print(f"Disconnect error: {e}")
-        finally:
-            # Clean up proxy to prevent memory leaks
-            if hasattr(self, 'notification_proxy'):
-                self.notification_proxy.destroy()
-                self.notification_proxy = None
-            self.device = None
-            self.server = None
-            self.service = None
-            self.tx_char = None
-            self.rx_char = None
+            return False
     
-    def is_connected(self):
-        """Check if connected"""
-        return self.device and self.device.gatt.connected
+    def get_device_name(self):
+        """Get connected device name
+        
+        Returns:
+            str: Device name or None if not connected
+        """
+        return self.adapter.getDeviceName()
+    
+    def get_device_id(self):
+        """Get connected device ID
+        
+        Returns:
+            str: Device ID or None if not connected
+        """
+        return self.adapter.getDeviceId()

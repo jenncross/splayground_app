@@ -45,6 +45,19 @@ Browser Requirements:
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
+    <!-- JavaScript API Adapters (load BEFORE PyScript) -->
+    <!-- These handle browser API operations natively to avoid Pyodide async issues -->
+    <script type="module">
+        // Import and expose adapters to window for Python access
+        import { SerialAdapter } from './js/adapters/serialAdapter.js';
+        import { BluetoothAdapter } from './js/adapters/bluetoothAdapter.js';
+        
+        window.serialAdapter = SerialAdapter;
+        window.bluetoothAdapter = BluetoothAdapter;
+        
+        console.log('✅ API adapters loaded and exposed to window');
+    </script>
+    
     <style>
         body {
             margin: 0;

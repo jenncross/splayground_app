@@ -140,6 +140,35 @@ const PyBridge = {
     }
   },
 
+  // Firmware upload functions
+  async uploadFirmware(files) {
+    return await callPython('upload_firmware', files);
+  },
+
+  async getBoardInfo() {
+    return await callPython('get_board_info');
+  },
+
+  async executeFileOnDevice(filePath) {
+    return await callPython('execute_file_on_device', filePath);
+  },
+
+  /**
+   * Soft reset the connected device (MicroPython re-initialization)
+   * @returns {Promise<{status: string, message?: string, error?: string}>}
+   */
+  async softResetDevice() {
+    return await callPython('soft_reset_device');
+  },
+
+  /**
+   * Hard reset the connected device (full hardware reboot)
+   * @returns {Promise<{status: string, message?: string, error?: string}>}
+   */
+  async hardResetDevice() {
+    return await callPython('hard_reset_device');
+  },
+
   // Direct function calls only - no event system needed
 };
 

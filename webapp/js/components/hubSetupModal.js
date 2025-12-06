@@ -12,12 +12,11 @@
  */
 
 import { loadHubFiles } from '../../hubCode/manifest.js';
-import SerialUploader from '../utils/serialUploader.js';
+import { PyBridge } from '../utils/pyBridge.js';
 
 export class HubSetupModal {
     constructor() {
         this.modal = null;
-        this.uploader = null;
         this.state = 'initial'; // initial, uploading, success, error
         this.hasExternalAntenna = false; // Track antenna configuration
         this.uploadProgress = {
@@ -33,8 +32,6 @@ export class HubSetupModal {
      */
     async show(serialPort) {
         this.serialPort = serialPort;
-        this.uploader = new SerialUploader();
-        await this.uploader.useExistingPort(serialPort);
         
         this.createModal();
         this.render();
@@ -147,6 +144,16 @@ export class HubSetupModal {
                             <div>
                                 <span class="text-gray-600">Estimated time:</span>
                                 <span class="font-semibold text-gray-900 ml-2">~30 seconds</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div class="flex items-start gap-3">
+                            <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
+                            <div class="text-sm text-blue-800">
+                                <p class="font-medium mb-1">Upload Process:</p>
+                                <p>The upload will automatically interrupt any running code and enter firmware upload mode. Just click Start Upload below.</p>
                             </div>
                         </div>
                     </div>
@@ -386,6 +393,30 @@ export class HubSetupModal {
             this.state = 'uploading';
             this.render();
 
+            // Check if Python serial is connected
+            // Python's WebSerial needs an active connection for upload
+            console.log('Checking Python serial connection status...');
+            const connectionStatus = await PyBridge.getConnectionStatus();
+            
+            if (!connectionStatus.connected || connectionStatus.mode !== 'serial') {
+                // Not connected via serial - need to connect first
+                console.log('Python serial not connected - connecting now...');
+                
+                // Connect via Python (this will prompt user for port selection)
+                const connectResult = await PyBridge.connectHubSerial();
+                
+                if (connectResult.status !== 'success') {
+                    throw new Error('Failed to connect to serial port: ' + (connectResult.error || 'Unknown error'));
+                }
+                
+                console.log('Connected to serial port via Python');
+                
+                // Give it a moment to stabilize
+                await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+                console.log('Python serial already connected, using existing connection');
+            }
+
             // Load all hub files
             console.log('Loading hub files...');
             const files = await loadHubFiles();
@@ -415,50 +446,35 @@ export class HubSetupModal {
             };
             this.render();
 
-            // Acquire serial streams
-            console.log('Acquiring serial streams...');
-            await this.uploader.acquireStreams();
-
-            // Enter raw REPL mode
-            console.log('Entering raw REPL mode...');
-            await this.uploader.enterRawRepl();
-
-            // Upload each file
-            const results = await this.uploader.uploadMultipleFiles(files, (progress) => {
-                if (progress.type === 'overall') {
+            // Set up progress callback for Python to call
+            window.onUploadProgress = (progress) => {
                     this.uploadProgress.current = progress.current;
-                    this.uploadProgress.currentFile = progress.currentFile;
-                } else if (progress.type === 'file') {
+                this.uploadProgress.currentFile = progress.file;
+                
+                // Update file status
                     const fileIndex = this.uploadProgress.files.findIndex(f => f.path === progress.file);
                     if (fileIndex >= 0) {
                         this.uploadProgress.files[fileIndex].status = progress.status;
                     }
-                } else if (progress.type === 'complete') {
-                    this.uploadProgress.current = this.uploadProgress.total;
-                }
+                
                 this.render();
-            });
+            };
 
-            // Exit raw REPL mode
-            console.log('Exiting raw REPL mode...');
-            await this.uploader.exitRawRepl();
+            // Call Python upload function (handles REPL mode internally)
+            console.log('Starting Python upload...');
+            const result = await PyBridge.uploadFirmware(files);
 
-            // Reset the board
-            console.log('Resetting board...');
-            await this.uploader.resetBoard();
+            // Clean up progress callback
+            delete window.onUploadProgress;
 
-            // Release streams
-            await this.uploader.releaseStreams();
-
-            // Check if any files failed
-            const failedFiles = results.filter(r => r.status === 'error');
-            if (failedFiles.length > 0) {
-                throw new Error(`Failed to upload ${failedFiles.length} file(s): ${failedFiles.map(f => f.path).join(', ')}`);
-            }
-
-            // Success!
+            // Check result
+            if (result.status === 'success') {
+                console.log(`✅ Upload successful: ${result.files_uploaded} files`);
             this.state = 'success';
             this.render();
+            } else {
+                throw new Error(result.error || 'Upload failed');
+            }
 
         } catch (error) {
             console.error('Upload error:', error);
@@ -466,11 +482,9 @@ export class HubSetupModal {
             this.state = 'error';
             this.render();
 
-            // Make sure to release streams on error
-            try {
-                await this.uploader.releaseStreams();
-            } catch (e) {
-                console.error('Error releasing streams:', e);
+            // Clean up progress callback
+            if (window.onUploadProgress) {
+                delete window.onUploadProgress;
             }
         }
     }

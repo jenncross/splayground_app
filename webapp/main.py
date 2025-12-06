@@ -33,13 +33,26 @@ import json
 import random
 import time
 
+# Check if JavaScript adapters are loaded (hybrid architecture)
+if not hasattr(window, 'serialAdapter'):
+    console.error("❌ FATAL: serialAdapter not found!")
+    console.error("Make sure js/adapters/serialAdapter.js is loaded before PyScript")
+    raise Exception("JavaScript adapters not loaded properly")
+
+if not hasattr(window, 'bluetoothAdapter'):
+    console.error("❌ FATAL: bluetoothAdapter not found!")
+    console.error("Make sure js/adapters/bluetoothAdapter.js is loaded before PyScript")
+    raise Exception("JavaScript adapters not loaded properly")
+
+console.log("✅ JavaScript adapters detected")
+
 # Import WebBLE class
 from mpy.webBluetooth import WebBLE
-ble = WebBLE()  # Create BLE instance
+ble = WebBLE()  # Create BLE instance (thin wrapper over bluetoothAdapter)
 
 # Import WebSerial class
 from mpy.webSerial import WebSerial
-serial = WebSerial()  # Create Serial instance (version printed in __init__)
+serial = WebSerial()  # Create Serial instance (thin wrapper over serialAdapter)
 
 # Set up serial callbacks (will be properly assigned after functions are defined)
 # These are forward-declared here and assigned at the bottom of the file
@@ -644,10 +657,8 @@ async def send_command_to_hub(command, rssi_threshold="all"):
             return js_result
         
         # Format for Serial (JSON)
-        console.log(f"🔍 Building JSON: cmd={command} (type={type(command).__name__}), rssi={rssi_threshold} (type={type(rssi_threshold).__name__})")
         cmd_obj = {"cmd": command, "rssi": rssi_threshold}
         message = json.dumps(cmd_obj)
-        console.log(f"📤 JSON string to send: '{message}' (length={len(message)})")
         success = await serial.send(message)
         
     elif hub_connection_mode == "ble":
@@ -792,6 +803,300 @@ def send_command(command, device_ids):
 # Direct function calls only - no event system needed
 
 # Expose functions directly to global scope - simplified approach
+# ============================================================================
+# Firmware Upload Functions
+# ============================================================================
+
+async def upload_firmware(files_json):
+    """
+    Upload hub firmware files to ESP32
+    
+    Parameters:
+    -----------
+    files_json : list of dicts
+        [{"path": "main.py", "content": "..."}, ...]
+    
+    Returns:
+    --------
+    JavaScript object with upload result and progress
+    """
+    global serial_connected
+    
+    # Check if serial is connected
+    if not serial.is_connected():
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = "Not connected to serial port"
+        return js_result
+    
+    try:
+        # Enter REPL mode
+        console.log("Entering REPL mode...")
+        await serial.enter_repl_mode()
+        
+        # Convert JS array to Python list
+        files = []
+        for i in range(len(files_json)):
+            file_obj = files_json[i]
+            files.append({
+                "path": file_obj.path,
+                "content": file_obj.content
+            })
+        
+        total_files = len(files)
+        console.log(f"Uploading {total_files} files...")
+        
+        # Upload each file with progress callback
+        for idx, file_info in enumerate(files):
+            file_path = file_info["path"]
+            content = file_info["content"]
+            
+            # Notify JavaScript of progress
+            if hasattr(window, 'onUploadProgress'):
+                progress = Object.new()
+                progress.current = idx + 1
+                progress.total = total_files
+                progress.file = file_path
+                progress.status = "uploading"
+                window.onUploadProgress(progress)
+            
+            console.log(f"Uploading {idx + 1}/{total_files}: {file_path}...")
+            
+            # Create directory if needed
+            dir_parts = file_path.split("/")
+            if len(dir_parts) > 1:
+                dir_path = "/".join(dir_parts[:-1])
+                if dir_path:
+                    await serial.ensure_directory(dir_path)
+            
+            # Upload file
+            await serial.upload_file(file_path, content)
+            
+            # Notify upload complete for this file
+            if hasattr(window, 'onUploadProgress'):
+                progress = Object.new()
+                progress.current = idx + 1
+                progress.total = total_files
+                progress.file = file_path
+                progress.status = "uploaded"
+                window.onUploadProgress(progress)
+        
+        # Hard reset device (full hardware reboot - this will run main.py)
+        console.log("Rebooting device...")
+        await serial.hard_reset()
+        
+        # Note: Don't call exit_repl_mode() after hard_reset
+        # The device has rebooted and is now running main.py
+        # The serial connection is still open but the device is no longer at REPL
+        
+        console.log(f"✅ Upload complete: {total_files} files")
+        console.log("Device is rebooting and will start running hub firmware...")
+        
+        # Return success
+        js_result = Object.new()
+        js_result.status = "success"
+        js_result.files_uploaded = total_files
+        return js_result
+        
+    except Exception as e:
+        console.error(f"Upload failed: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Try to exit REPL mode on error
+        try:
+            await serial.exit_repl_mode()
+        except:
+            pass
+        
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = str(e)
+        return js_result
+
+async def get_board_info():
+    """Get MicroPython board information
+    
+    Temporarily enters REPL mode, gets board info, then restarts JSON mode.
+    This ensures the device returns to normal operation.
+    """
+    if not serial.is_connected():
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = "Not connected"
+        return js_result
+    
+    try:
+        # Enter REPL mode (stops JSON read loop, releases locks)
+        await serial.enter_repl_mode()
+        
+        # Get board info (this works from normal REPL prompt)
+        info = await serial.get_board_info()
+        
+        # Exit raw REPL if we entered it, and restart JSON mode
+        await serial.exit_raw_repl_mode()
+        
+        # Restart JSON read loop to return to normal operation
+        await serial.release_reader_writer()
+        await serial.acquire_reader_writer()
+        serial.read_loop_task = asyncio.create_task(serial._read_loop())
+        
+        js_result = Object.new()
+        js_result.status = "success"
+        js_result.info = info
+        return js_result
+        
+    except Exception as e:
+        console.error(f"Failed to get board info: {e}")
+        
+        # Try to recover to JSON mode
+        try:
+            await serial.exit_raw_repl_mode()
+            await serial.release_reader_writer()
+            await serial.acquire_reader_writer()
+            serial.read_loop_task = asyncio.create_task(serial._read_loop())
+        except:
+            pass
+        
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = str(e)
+        return js_result
+
+async def execute_file_on_device(file_path):
+    """Execute a specific Python file on the connected device
+    
+    Temporarily enters REPL mode, executes the file, then restarts JSON mode.
+    This ensures the device returns to normal operation.
+    """
+    if not serial.is_connected():
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = "Not connected"
+        return js_result
+    
+    try:
+        # Enter REPL mode
+        await serial.enter_repl_mode()
+        
+        # Execute the file
+        output = await serial.execute_file(file_path)
+        
+        # Exit raw REPL mode
+        await serial.exit_raw_repl_mode()
+        
+        # Restart JSON read loop to return to normal operation
+        await serial.release_reader_writer()
+        await serial.acquire_reader_writer()
+        serial.read_loop_task = asyncio.create_task(serial._read_loop())
+        
+        js_result = Object.new()
+        js_result.status = "success"
+        js_result.output = output
+        return js_result
+        
+    except Exception as e:
+        console.error(f"File execution failed: {e}")
+        
+        # Try to recover to JSON mode
+        try:
+            await serial.exit_raw_repl_mode()
+            await serial.release_reader_writer()
+            await serial.acquire_reader_writer()
+            serial.read_loop_task = asyncio.create_task(serial._read_loop())
+        except:
+            pass
+        
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = str(e)
+        return js_result
+
+async def soft_reset_device():
+    """Soft reset the connected device (MicroPython re-initialization)
+    
+    Performs a soft reset which re-initializes MicroPython but doesn't
+    reboot the hardware. Device will restart at the REPL prompt.
+    """
+    if not serial.is_connected():
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = "Not connected"
+        return js_result
+    
+    try:
+        # Enter REPL mode
+        await serial.enter_repl_mode()
+        
+        # Perform soft reset
+        await serial.soft_reset()
+        
+        # Device is now at normal REPL prompt (>>>)
+        # Don't restart JSON mode - user may want to interact with REPL
+        
+        js_result = Object.new()
+        js_result.status = "success"
+        js_result.message = "Device soft reset (at REPL prompt)"
+        return js_result
+        
+    except Exception as e:
+        console.error(f"Soft reset failed: {e}")
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = str(e)
+        return js_result
+
+async def hard_reset_device():
+    """Hard reset the connected device (full hardware reboot)
+    
+    Performs a hardware reset which reboots the ESP32.
+    Device will restart and run main.py automatically.
+    After reset, the serial connection needs to re-establish JSON mode.
+    """
+    if not serial.is_connected():
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = "Not connected"
+        return js_result
+    
+    try:
+        # Enter REPL mode
+        await serial.enter_repl_mode()
+        
+        # Perform hard reset (device will reboot)
+        await serial.hard_reset()
+        
+        # Device has rebooted and is running main.py
+        # Restart JSON read loop to reconnect
+        await serial.release_reader_writer()
+        await serial.acquire_reader_writer()
+        serial.read_loop_task = asyncio.create_task(serial._read_loop())
+        
+        js_result = Object.new()
+        js_result.status = "success"
+        js_result.message = "Device rebooted (running main.py)"
+        return js_result
+        
+    except Exception as e:
+        console.error(f"Hard reset failed: {e}")
+        
+        # Try to recover to JSON mode
+        try:
+            await serial.release_reader_writer()
+            await serial.acquire_reader_writer()
+            serial.read_loop_task = asyncio.create_task(serial._read_loop())
+        except:
+            pass
+        
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = str(e)
+        return js_result
+
+# ============================================================================
+# Expose Python functions to JavaScript
+# ============================================================================
+
 # Use create_proxy only for async functions to prevent garbage collection
 window.get_devices = get_devices
 window.get_connection_status = get_connection_status
@@ -802,6 +1107,13 @@ window.disconnect_hub_serial = create_proxy(disconnect_hub_serial)
 window.send_command_to_hub = create_proxy(send_command_to_hub)
 window.refresh_devices = create_proxy(refresh_devices)
 window.refresh_devices_from_hub = create_proxy(refresh_devices_from_hub)
+
+# Firmware upload and device management functions
+window.upload_firmware = create_proxy(upload_firmware)
+window.get_board_info = create_proxy(get_board_info)
+window.execute_file_on_device = create_proxy(execute_file_on_device)
+window.soft_reset_device = create_proxy(soft_reset_device)
+window.hard_reset_device = create_proxy(hard_reset_device)
 
 # Set up serial connection lost callback
 serial.on_connection_lost_callback = on_serial_connection_lost

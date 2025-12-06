@@ -1,9 +1,14 @@
 """
-Web Serial API Wrapper for USB Hub Communication
-=================================================
+Web Serial API Wrapper for USB Hub Communication (Hybrid Architecture)
+========================================================================
 
-This module provides a Python wrapper around the Web Serial API for USB communication
-with the Simple Hub. It mirrors the webBluetooth.py interface for consistency.
+This module provides a Python wrapper around the JavaScript Serial Adapter,
+keeping all business logic in Python while delegating browser API operations
+to native JavaScript to avoid Pyodide async issues.
+
+Architecture:
+- JavaScript (serialAdapter.js): Handles all Web Serial API operations
+- Python (this file): Contains all business logic, protocol handling, orchestration
 
 Web Serial API:
 - Supported in Chrome/Edge browsers
@@ -26,19 +31,27 @@ Protocol:
 
 from pyscript import window
 import asyncio
+import json
 
 class WebSerial:
-    """Web Serial API wrapper for USB communication with hub"""
+    """Web Serial API wrapper for USB communication with hub (thin Python layer)"""
     
     def __init__(self):
         """Initialize Serial wrapper"""
-        self.port = None
-        self.reader = None
-        self.writer = None
         self.on_data_callback = None
         self.on_connection_lost_callback = None
-        self.read_loop_task = None
-        print("🔌 WebSerial initialized [v2024.12.05] - disconnect detection enabled")
+        self.read_loop_stop = None
+        print("🔌 WebSerial initialized [v2024.12.05-hybrid]")
+        
+        # Check if JS adapter is available
+        if not hasattr(window, 'serialAdapter'):
+            raise Exception("serialAdapter not found! Make sure js/adapters/serialAdapter.js is loaded.")
+        
+        self.adapter = window.serialAdapter
+        
+    def is_connected(self):
+        """Check if serial port is connected"""
+        return self.adapter.isConnected()
         
     async def connect(self):
         """
@@ -48,285 +61,389 @@ class WebSerial:
             bool: True if connected successfully, False otherwise
         """
         try:
-            # Check API availability
-            if not hasattr(window.navigator, 'serial'):
-                print("ERROR: Web Serial API not available!")
-                print("Please use Chrome or Edge browser")
-                return False
+            # Use JS adapter for connection
+            success = await self.adapter.connect()
             
-            # Request port from user
-            print("Requesting serial port...")
-            self.port = await window.navigator.serial.requestPort()
+            if success:
+                # Start read loop for JSON messages
+                self._start_json_read_loop()
+                print("Serial connected successfully")
             
-            if not self.port:
-                print("No port selected")
-                return False
+            return success
             
-            print("Port selected")
+        except Exception as e:
+            print(f"Serial connection error: {e}")
+            return False
+    
+    def _start_json_read_loop(self):
+        """Start background read loop for JSON messages using JS adapter"""
+        if self.read_loop_stop:
+            # Stop existing loop
+            self.read_loop_stop()
+        
+        # Start read loop with JS adapter
+        def on_data(data):
+            """Handle incoming data from JS adapter"""
+            if not data:
+                return
+                
+            # Parse line-delimited JSON messages
+            lines = data.split('\n')
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    message = json.loads(line)
+                    if self.on_data_callback:
+                        self.on_data_callback(message)
+                except json.JSONDecodeError:
+                    # Not valid JSON, ignore
+                    pass
+        
+        def on_error(error):
+            """Handle read errors"""
+            print(f"Serial read error: {error}")
+            if self.on_connection_lost_callback:
+                self.on_connection_lost_callback()
+        
+        # Start loop and store stop function
+        self.read_loop_stop = self.adapter.startReadLoop(on_data, on_error)
+    
+    def _stop_json_read_loop(self):
+        """Stop the JSON read loop"""
+        if self.read_loop_stop:
+            self.read_loop_stop()
+            self.read_loop_stop = None
+            print("Stopped JSON read loop")
+    
+    async def disconnect(self):
+        """Disconnect from serial port"""
+        try:
+            # Stop read loop
+            self._stop_json_read_loop()
             
-            # Open port with 115200 baud (standard for ESP32)
-            options = window.Object.new()
-            options.baudRate = 115200
-            await self.port.open(options)
-            print("Port opened at 115200 baud")
+            # Disconnect via JS adapter
+            await self.adapter.disconnect()
             
-            # Get reader and writer streams
-            self.reader = self.port.readable.getReader()
-            self.writer = self.port.writable.getWriter()
-            
-            # Start background read loop
-            self.read_loop_task = asyncio.create_task(self._read_loop())
-            
-            print("Serial connected successfully")
+            print("Serial disconnected")
             return True
             
         except Exception as e:
-            error_msg = str(e)
-            
-            # User cancelled port selection
-            if "cancelled" in error_msg.lower() or "aborted" in error_msg.lower():
-                print("User cancelled serial port selection")
-                return False
-            
-            # Port is already in use by another application
-            elif "in use" in error_msg.lower() or "busy" in error_msg.lower():
-                print("ERROR: Serial port is already in use!")
-                return False
-            
-            # Generic error
-            else:
-                print(f"Serial connection error: {e}")
-                import traceback
-                traceback.print_exc()
-                return False
-    
-    async def _read_loop(self):
-        """
-        Background task to continuously read serial data
-        
-        This runs in the background and calls the callback for each complete line
-        """
-        try:
-            decoder = window.TextDecoder.new()
-            line_buffer = ""
-            
-            while True:
-                # Read chunk from serial port
-                result = await self.reader.read()
-                
-                # Check if reader was closed
-                if result.done:
-                    print("🔴 Serial reader closed - connection lost!")
-                    
-                    # Clean up serial port state immediately
-                    print("🔧 Cleaning up serial port state...")
-                    self.port = None
-                    self.reader = None
-                    self.writer = None
-                    self.read_loop_task = None
-                    print(f"Serial state cleaned: port={self.port}, reader={self.reader}")
-                    print(f"is_connected() = {self.is_connected()}")
-                    
-                    # Call Python backend callback to update state
-                    print("Calling Python backend callback...")
-                    if self.on_connection_lost_callback:
-                        self.on_connection_lost_callback()
-                        print("Python backend callback completed")
-                    else:
-                        print("WARNING: No on_connection_lost_callback set!")
-                    
-                    # Show detailed error modal to user
-                    print("Showing error modal...")
-                    if hasattr(window, 'showSerialConnectionLostError'):
-                        window.showSerialConnectionLostError()
-                        print("Error modal shown")
-                    else:
-                        print("WARNING: showSerialConnectionLostError not available")
-                    
-                    # Trigger hub disconnected callback to update UI state
-                    print("Calling onHubDisconnected...")
-                    if hasattr(window, 'onHubDisconnected'):
-                        window.onHubDisconnected()
-                        print("onHubDisconnected completed")
-                    else:
-                        print("WARNING: onHubDisconnected not available")
-                    
-                    break
-                
-                # Decode bytes to text
-                chunk = decoder.decode(result.value, window.Object.new(stream=True))
-                
-                if not chunk:
-                    continue
-                
-                # Add to line buffer
-                line_buffer += chunk
-                
-                # Process complete lines
-                while "\n" in line_buffer:
-                    line, line_buffer = line_buffer.split("\n", 1)
-                    line = line.strip()
-                    
-                    if line and self.on_data_callback:
-                        try:
-                            self.on_data_callback(line)
-                        except Exception as cb_error:
-                            print(f"Callback error: {cb_error}")
-        
-        except Exception as e:
-            error_msg = str(e)
-            
-            # DEBUG: Print the actual error to understand what we're catching
-            print(f"DEBUG: Read loop exception caught: '{error_msg}'")
-            print(f"DEBUG: Exception type: {type(e).__name__}")
-            
-            # Device was disconnected or lost - check for various error conditions
-            is_disconnect_error = (
-                "lost" in error_msg.lower() or 
-                "disconnected" in error_msg.lower() or
-                "device" in error_msg.lower() or
-                "port" in error_msg.lower() or
-                not error_msg  # Empty error message often means disconnect
-            )
-            
-            if is_disconnect_error:
-                print("")
-                print("⚠️  Serial connection lost!")
-                print("")
-                print("Possible causes:")
-                print("  • USB cable unplugged")
-                print("  • Hub powered off")
-                print("  • Another application opened the port (Thonny, Arduino IDE)")
-                print("  • Hub crashed or reset")
-                print("")
-                print("To reconnect:")
-                print("  1. Check USB cable is connected")
-                print("  2. Close any other applications using the port")
-                print("  3. Click 'Connect Hub' again")
-                print("")
-                
-                # Clean up serial port state immediately
-                print("🔧 Cleaning up serial port state...")
-                self.port = None
-                self.reader = None
-                self.writer = None
-                self.read_loop_task = None
-                print(f"Serial state cleaned: port={self.port}, reader={self.reader}")
-                print(f"is_connected() = {self.is_connected()}")
-                
-                # Call Python backend callback to update state
-                print("Calling Python backend callback...")
-                if self.on_connection_lost_callback:
-                    self.on_connection_lost_callback()
-                    print("Python backend callback completed")
-                else:
-                    print("WARNING: No on_connection_lost_callback set!")
-                
-                # Show detailed error modal to user
-                print("Showing error modal...")
-                if hasattr(window, 'showSerialConnectionLostError'):
-                    window.showSerialConnectionLostError()
-                    print("Error modal shown")
-                else:
-                    print("WARNING: showSerialConnectionLostError not available")
-                
-                # Trigger hub disconnected callback to update UI state
-                print("Calling onHubDisconnected...")
-                if hasattr(window, 'onHubDisconnected'):
-                    window.onHubDisconnected()
-                    print("onHubDisconnected completed")
-                else:
-                    print("WARNING: onHubDisconnected not available")
-                    
-            # Don't print error if connection was intentionally closed
-            elif "cancel" not in error_msg.lower() and "abort" not in error_msg.lower():
-                print(f"Read loop error: {e}")
-                import traceback
-                traceback.print_exc()
+            print(f"Disconnect error: {e}")
+            return False
     
     async def send(self, message):
         """
-        Send data to serial port
+        Send JSON message to hub
         
         Args:
-            message: String to send (newline will be added automatically)
-        
+            message: JSON string or dict to send
+            
         Returns:
-            bool: True if sent successfully, False otherwise
+            bool: True if sent successfully
         """
-        print(f"DEBUG: send() called - writer={self.writer}, port={self.port}")
-        
-        if not self.writer or not self.port:
-            print("ERROR: Not connected to serial port!")
-            print(f"  writer={self.writer}, port={self.port}")
-            return False
-        
         try:
-            # Encode message with newline
-            encoder = window.TextEncoder.new()
-            full_message = message + "\n"
-            print(f"🔌 Serial TX (with newline): {repr(full_message)}")
-            data = encoder.encode(full_message)
-            print(f"🔌 Encoded bytes length: {data.byteLength}")
+            # Convert dict to JSON string if needed
+            if isinstance(message, dict):
+                message = json.dumps(message)
             
-            # Write to port
-            await self.writer.write(data)
+            # Add newline terminator
+            if not message.endswith('\n'):
+                message += '\n'
             
+            # Send via JS adapter
+            await self.adapter.write(message)
             return True
             
         except Exception as e:
             print(f"Serial send error: {e}")
-            import traceback
-            traceback.print_exc()
             return False
     
-    async def disconnect(self):
-        """Disconnect from serial port and cleanup resources"""
+    # ============================================================================
+    # REPL Mode Operations (Business Logic - stays in Python)
+    # ============================================================================
+    
+    async def send_raw(self, data):
+        """Send raw bytes without adding newline (for REPL commands)"""
+        await self.adapter.write(data)
+    
+    async def read_raw(self, timeout_ms=2000):
+        """Read raw data with timeout (delegates to JS adapter)"""
+        return await self.adapter.read(timeout_ms)
+    
+    async def enter_repl_mode(self):
+        """Switch from JSON mode to REPL mode for firmware upload
+        
+        REPL Control Commands:
+        - Ctrl-C (\x03): Cancel input or interrupt running code
+        - Ctrl-A (\x01): Enter raw REPL mode (permanent paste mode)
+        - Ctrl-B (\x02): Exit to normal REPL mode
+        - Ctrl-D (\x04): Soft reset on blank line
+        
+        Business logic: Orchestrates the REPL entry sequence
+        """
+        print("Entering REPL mode...")
+        
+        # Stop JSON read loop
+        self._stop_json_read_loop()
+        
+        # Give it a moment to fully stop
+        await asyncio.sleep(0.2)
+        
+        # More aggressive interrupt sequence (matching serialUploader.js)
+        # Send multiple CTRL-C to interrupt any running code
+        print("Interrupting any running code...")
+        for i in range(3):
+            await self.send_raw('\x03')
+            await asyncio.sleep(0.05)  # 50ms delay between attempts
+        
+        # Wait for interruption to take effect
+        await asyncio.sleep(0.2)
+        
+        # Drain any existing output
+        print("Draining buffer...")
+        for i in range(5):
+            chunk = await self.read_raw(200)
+            if chunk:
+                print(f"Drained: {chunk[:100]}")
+        
+        # Send CTRL-A to enter raw REPL mode
+        print("Sending CTRL-A to enter raw REPL...")
+        await self.send_raw('\x01')
+        await asyncio.sleep(0.3)  # 300ms delay
+        
+        # Wait for "raw REPL; CTRL-B to exit" prompt
+        result = await self.adapter.readUntil('raw REPL', 5000)
+        
+        if result.found:
+            print("✓ Entered raw REPL mode")
+            # Drain any remaining welcome text
+            for i in range(5):
+                await self.read_raw(200)
+        else:
+            # Be lenient - continue anyway
+            print("⚠️ May not have entered raw REPL properly")
+            print("⚠️ This might work anyway - continuing...")
+    
+    async def exit_raw_repl_mode(self):
+        """Exit raw REPL mode and return to normal REPL (>>>) prompt
+        
+        Sends CTRL-B to exit raw REPL mode.
+        Does NOT return to JSON mode - for that, restart the device.
+        """
+        print("Exiting raw REPL mode...")
+        # Send CTRL-B to exit raw REPL
+        await self.send_raw('\x02')
+        await asyncio.sleep(0.2)
+        
+        # Verify we got back to normal REPL
+        result = await self.adapter.readUntil('>>>', 1000)
+        if result.found:
+            print("✓ Exited to normal REPL mode (>>>)")
+        else:
+            print("⚠️ Exit may not have completed (no >>> prompt), continuing anyway")
+    
+    async def exit_repl_mode(self):
+        """DEPRECATED: Use exit_raw_repl_mode() instead for clarity
+        
+        This is an alias for backward compatibility with error handling code.
+        """
+        await self.exit_raw_repl_mode()
+    
+    async def execute_repl_command(self, code, timeout_ms=5000):
+        """Execute Python code in raw REPL mode
+        
+        Protocol:
+        1. Write code (not echoed back in raw REPL)
+        2. Send CTRL-D (\x04) to execute
+        3. Read response (with timeout to prevent hanging)
+        4. Check for errors
+        
+        Args:
+            code: Python code to execute
+            timeout_ms: Maximum time to wait for response
+        
+        Raises:
+            Exception if execution errors or timeout
+        
+        Business logic: REPL command protocol orchestration
+        """
+        start_time = window.Date.now()
+        
         try:
-            # Cancel read loop
-            if self.read_loop_task:
-                self.read_loop_task.cancel()
-                try:
-                    await self.read_loop_task
-                except asyncio.CancelledError:
-                    pass
-                self.read_loop_task = None
+            # Write the code
+            await self.send_raw(code)
             
-            # Close reader
-            if self.reader:
-                try:
-                    await self.reader.cancel()
-                except:
-                    pass
-                self.reader = None
+            # Send CTRL-D to execute
+            await self.send_raw('\x04')
+            await asyncio.sleep(0.2)
             
-            # Release writer
-            if self.writer:
-                try:
-                    self.writer.releaseLock()
-                except:
-                    pass
-                self.writer = None
+            # Read response (try multiple times to get all output)
+            response = ''
+            for i in range(5):
+                if (window.Date.now() - start_time) > timeout_ms:
+                    raise Exception(f"REPL command timeout after {timeout_ms}ms")
+                
+                chunk = await self.read_raw(1000)
+                response += chunk
+                if not chunk:
+                    break
             
-            # Close port
-            if self.port:
-                try:
-                    await self.port.close()
-                except:
-                    pass
-                self.port = None
+            # Check for errors
+            if 'Traceback' in response or 'Error:' in response:
+                error_snippet = response[:200] if response else "Unknown error"
+                raise Exception(f"REPL execution error: {error_snippet}")
             
-            print("Serial disconnected")
+            return response
             
         except Exception as e:
-            print(f"Disconnect error: {e}")
+            raise Exception(f"Failed to execute REPL command: {str(e)}")
     
-    def is_connected(self):
-        """
-        Check if currently connected to serial port
+    # ============================================================================
+    # File Operations (Business Logic - stays in Python)
+    # ============================================================================
+    
+    async def get_board_info(self, timeout_ms=3000):
+        """Get MicroPython version and board info
         
-        Returns:
-            bool: True if connected, False otherwise
+        Sends Ctrl-D from normal REPL to trigger soft reset,
+        which displays board information.
+        
+        Business logic: Parse and extract board information
         """
-        return self.port is not None and self.reader is not None
-
+        print("Getting board info...")
+        start_time = window.Date.now()
+        
+        try:
+            # Send Ctrl-D to trigger soft reset and show version
+            await self.send_raw('\x04')
+            await asyncio.sleep(0.5)
+            
+            # Read the output (version info)
+            info = ''
+            for i in range(8):
+                if (window.Date.now() - start_time) > timeout_ms:
+                    raise Exception(f"Timeout waiting for board info ({timeout_ms}ms)")
+                
+                chunk = await self.read_raw(500)
+                info += chunk
+                
+                # Stop early if we found MicroPython
+                if 'MicroPython' in info:
+                    break
+            
+            # Parse version and board from output
+            if 'MicroPython' in info:
+                lines = info.split('\n')
+                for line in lines:
+                    if 'MicroPython' in line:
+                        board_info = line.strip()
+                        print(f"Board: {board_info}")
+                        return board_info
+            
+            # Didn't find MicroPython in output
+            if info:
+                raise Exception(f"Unexpected board response: {info[:100]}")
+            else:
+                raise Exception("No response from board")
+                
+        except Exception as e:
+            raise Exception(f"Failed to get board info: {str(e)}")
+    
+    async def ensure_directory(self, dir_path):
+        """Create directory on device via REPL
+        
+        Business logic: Directory creation command construction
+        """
+        if not dir_path or dir_path in ['/', '.']:
+            return
+        
+        print(f"Creating directory: {dir_path}")
+        
+        code = f"""
+import os
+try:
+    os.mkdir('{dir_path}')
+except OSError:
+    pass  # Already exists
+"""
+        await self.execute_repl_command(code, timeout_ms=3000)
+    
+    async def upload_file(self, file_path, content):
+        """Upload single file to device using triple-quoted string
+        
+        Business logic: File content escaping and upload command construction
+        """
+        print(f"Uploading {file_path} ({len(content)} bytes)")
+        
+        # Escape content for triple-quoted Python string
+        content_escaped = content.replace('\\', '\\\\').replace("'''", "\\'\\'\\'")
+        
+        # Build Python code to write the file
+        upload_code = f"""
+with open('{file_path}', 'w') as f:
+    f.write('''{content_escaped}''')
+print('OK')
+"""
+        
+        try:
+            # Execute the upload command
+            timeout_ms = max(5000, len(content) // 100)  # ~10KB/sec minimum
+            response = await self.execute_repl_command(upload_code, timeout_ms=timeout_ms)
+            
+            # Check for OK response
+            if 'OK' in response or not response:
+                print(f"✓ Uploaded {file_path}")
+            else:
+                print(f"⚠️ Upload completed but unexpected response: {response[:100]}")
+            
+        except Exception as e:
+            raise Exception(f"Upload failed for {file_path}: {str(e)}")
+    
+    async def execute_file(self, file_path, timeout_ms=10000):
+        """Execute/run a specific Python file on the device
+        
+        Business logic: File execution command construction
+        """
+        print(f"Executing {file_path}...")
+        
+        code = f"exec(open('{file_path}').read())"
+        response = await self.execute_repl_command(code, timeout_ms=timeout_ms)
+        
+        print(f"✓ Executed {file_path}")
+        return response
+    
+    async def soft_reset(self, wait_time_ms=1500):
+        """Soft reset the device using Ctrl-D
+        
+        Business logic: Soft reset command and timing
+        """
+        print("Soft resetting device...")
+        await self.send_raw('\x04')
+        await asyncio.sleep(wait_time_ms / 1000.0)
+        print(f"✓ Soft reset complete (waited {wait_time_ms}ms)")
+    
+    async def hard_reset(self, wait_time_ms=2000):
+        """Hard reset the device (full hardware reboot)
+        
+        Business logic: Hard reset command construction using machine.reset()
+        """
+        print("Hard resetting device (hardware reboot)...")
+        
+        # Execute reset command in raw REPL
+        reset_code = """
+import machine
+machine.reset()
+"""
+        try:
+            await self.send_raw(reset_code)
+            await self.send_raw('\x04')  # CTRL-D to execute
+            
+            # Wait for device to reset
+            await asyncio.sleep(wait_time_ms / 1000.0)
+            print(f"✓ Hard reset initiated (waited {wait_time_ms}ms for reboot)")
+        except Exception as e:
+            # Reset command may not return a response since device reboots
+            print(f"Hard reset command sent (device is rebooting...)")

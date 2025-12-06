@@ -20,33 +20,22 @@ export function createMessageHistory(messages, onMessageClick, hubConnected = fa
     console.log('Setup Hub clicked (from welcome state)');
     
     try {
-      // Request a NEW serial port connection (separate from normal hub connection)
+      // Check Web Serial API availability
       if (!navigator.serial) {
         alert('Web Serial API not available. Please use Chrome or Edge browser.');
         return;
       }
       
-      console.log('Requesting serial port for firmware upload...');
-      const serialPort = await navigator.serial.requestPort();
+      console.log('Opening Hub Setup modal...');
       
-      if (!serialPort) {
-        console.log('No port selected');
-        return;
-      }
-      
-      console.log('Serial port selected, opening modal...');
-      
-      // Create and show the modal with the new port
+      // Create and show the modal
+      // Python will handle serial port connection
       const modal = new HubSetupModal();
-      await modal.show(serialPort);
+      await modal.show();
       
     } catch (error) {
-      if (error.name === 'NotFoundError' || error.message.includes('cancel')) {
-        console.log('User cancelled port selection');
-      } else {
         console.error('Error setting up hub:', error);
         alert('Error: ' + error.message);
-      }
     }
   };
   
