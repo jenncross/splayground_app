@@ -5,7 +5,8 @@
  * Handles the entire upload process with progress tracking.
  * 
  * States:
- * - initial: Confirmation screen
+ * - connecting: Prompting user to connect device and detecting board type
+ * - initial: Confirmation screen with device info
  * - uploading: Progress bar and file list
  * - success: Success message with next steps
  * - error: Error message with retry option
@@ -17,8 +18,10 @@ import { PyBridge } from '../utils/pyBridge.js';
 export class HubSetupModal {
     constructor() {
         this.modal = null;
-        this.state = 'initial'; // initial, uploading, success, error
+        this.state = 'connecting'; // connecting, initial, uploading, success, error
         this.hasExternalAntenna = false; // Track antenna configuration
+        this.deviceInfo = ''; // Device information string
+        this.deviceType = ''; // 'C6', 'C3', or 'unknown'
         this.uploadProgress = {
             current: 0,
             total: 0,
@@ -30,7 +33,7 @@ export class HubSetupModal {
     /**
      * Show the modal
      */
-    async show(serialPort) {
+    async show(serialPort = null, deviceInfo = '') {
         this.serialPort = serialPort;
         
         this.createModal();
@@ -40,6 +43,74 @@ export class HubSetupModal {
         // Initialize Lucide icons
         if (window.lucide) {
             window.lucide.createIcons();
+        }
+        
+        // If no device info provided, start connection process
+        if (!deviceInfo) {
+            await this.connectAndGetDeviceInfo();
+        } else {
+            this.setDeviceInfo(deviceInfo);
+            this.state = 'initial';
+            this.render();
+        }
+    }
+    
+    /**
+     * Set device info and parse device type
+     */
+    setDeviceInfo(deviceInfo) {
+        this.deviceInfo = deviceInfo;
+        
+        // Parse device type from info string
+        if (deviceInfo.includes('C6')) {
+            this.deviceType = 'C6';
+        } else if (deviceInfo.includes('C3')) {
+            this.deviceType = 'C3';
+            // C3 always uses external antenna, but we don't call now.antenna() due to crashes
+            this.hasExternalAntenna = false; // Keep false to avoid the antenna() call
+        } else {
+            this.deviceType = 'unknown';
+        }
+    }
+    
+    /**
+     * Connect to device and get board info
+     */
+    async connectAndGetDeviceInfo() {
+        try {
+            console.log('Connecting to device...');
+            
+            // Connect via Python (this will prompt user for port selection)
+            const connectResult = await PyBridge.connectHubSerial();
+            
+            if (connectResult.status !== 'success') {
+                throw new Error('Failed to connect: ' + (connectResult.error || 'Unknown error'));
+            }
+            
+            console.log('Connected! Getting device info...');
+            
+            // Give it a moment to stabilize
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Get device information
+            const deviceInfo = await PyBridge.getBoardInfo();
+            
+            if (deviceInfo.status !== 'success') {
+                throw new Error('Failed to get device info: ' + (deviceInfo.error || 'Unknown error'));
+            }
+            
+            console.log('Device info:', deviceInfo.info);
+            
+            // Set device info and move to confirmation screen
+            this.setDeviceInfo(deviceInfo.info);
+            this.state = 'initial';
+            this.render();
+            
+        } catch (error) {
+            console.error('Connection/info error:', error);
+            this.errorMessage = error.message || 'Unknown error occurred';
+            this.state = 'error';
+            this.render();
         }
     }
 
@@ -60,6 +131,7 @@ export class HubSetupModal {
         this.modal = document.createElement('div');
         this.modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
         this.modal.onclick = (e) => {
+            // Allow closing during all states except uploading
             if (e.target === this.modal && this.state !== 'uploading') {
                 this.hide();
             }
@@ -74,6 +146,9 @@ export class HubSetupModal {
 
         let content = '';
         switch (this.state) {
+            case 'connecting':
+                content = this.renderConnecting();
+                break;
             case 'initial':
                 content = this.renderInitial();
                 break;
@@ -102,82 +177,108 @@ export class HubSetupModal {
             window.lucide.createIcons();
         }
     }
+    
+    /**
+     * Render connecting state
+     */
+    renderConnecting() {
+        return `
+            <div class="p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="animate-spin">
+                        <i data-lucide="loader" class="w-6 h-6 text-blue-500"></i>
+                    </div>
+                    <h2 class="text-xl font-bold text-gray-800">Connecting to Device...</h2>
+                </div>
+                
+                <div class="space-y-4 text-gray-700">
+                    <p class="text-sm">
+                        Please select your ESP32 from the serial port picker.
+                    </p>
+                    
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div class="flex items-start gap-2">
+                            <i data-lucide="info" class="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5"></i>
+                            <div class="text-sm text-blue-800">
+                                Once connected, we'll automatically detect your device type.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex gap-3 mt-6">
+                    <button id="cancel-btn" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        `;
+    }
 
     /**
      * Render initial confirmation state
      */
     renderInitial() {
+        // Show antenna option only for C6 devices
+        const showAntennaOption = this.deviceType === 'C6';
+        
+        const antennaOptionHtml = showAntennaOption ? `
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="flex items-start gap-3">
+                    <input type="checkbox" id="externalAntennaCheckbox" class="mt-1 w-4 h-4 text-blue-600 rounded">
+                    <div class="flex-1">
+                        <label for="externalAntennaCheckbox" class="text-sm font-medium text-blue-900 cursor-pointer">
+                            I'm using an external antenna
+                        </label>
+                        <p class="text-xs text-blue-700 mt-1">
+                            Check this if your ESP32-C6 has an external antenna physically connected.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        ` : '';
+        
         return `
             <div class="p-6">
                 <div class="flex items-center gap-3 mb-4">
                     <i data-lucide="upload-cloud" class="w-6 h-6 text-blue-500"></i>
-                    <h2 class="text-xl font-bold text-gray-800">Setup ESP32 as Simple Hub</h2>
+                    <h2 class="text-xl font-bold text-gray-800">Setup ESP32 as Hub</h2>
                 </div>
                 
                 <div class="space-y-4 text-gray-700">
-                    <p>
-                        This will upload hub firmware to your ESP32, transforming it into 
-                        a fully functional Simple Hub that can communicate with playground modules.
+                    ${this.deviceInfo ? `
+                        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                            <div class="text-sm">
+                                <span class="text-gray-600">Connected Device:</span>
+                                <p class="font-mono text-xs text-gray-900 mt-1">${this.deviceInfo}</p>
+                            </div>
+                        </div>
+                    ` : ''}
+                    
+                    <p class="text-sm">
+                        This will upload hub firmware to your ESP32, enabling it to communicate with playground modules via ESP-NOW.
                     </p>
                     
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div class="flex items-start gap-3">
-                            <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
-                            <div class="text-sm">
-                                <p class="font-medium text-blue-900 mb-1">What will be uploaded:</p>
-                                <ul class="list-disc list-inside space-y-1 text-blue-800">
-                                    <li>Hub communication firmware</li>
-                                    <li>ESP-NOW protocol support</li>
-                                    <li>Serial communication handler</li>
-                                    <li>Hardware utilities</li>
-                                </ul>
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                        <div class="flex items-start gap-2">
+                            <i data-lucide="alert-triangle" class="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5"></i>
+                            <div class="text-sm text-yellow-800">
+                                <strong>Warning:</strong> This will overwrite any existing code on your ESP32.
                             </div>
                         </div>
                     </div>
                     
-                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    ${antennaOptionHtml}
+                    
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
                         <div class="grid grid-cols-2 gap-4 text-sm">
                             <div>
-                                <span class="text-gray-600">Files to upload:</span>
-                                <span class="font-semibold text-gray-900 ml-2">12 files</span>
+                                <span class="text-gray-600">Files:</span>
+                                <span class="font-semibold text-gray-900 ml-2">12</span>
                             </div>
                             <div>
-                                <span class="text-gray-600">Estimated time:</span>
-                                <span class="font-semibold text-gray-900 ml-2">~30 seconds</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div class="flex items-start gap-3">
-                            <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
-                            <div class="text-sm text-blue-800">
-                                <p class="font-medium mb-1">Upload Process:</p>
-                                <p>The upload will automatically interrupt any running code and enter firmware upload mode. Just click Start Upload below.</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                        <div class="flex items-start gap-3">
-                            <i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5"></i>
-                            <div class="text-sm text-yellow-800">
-                                <p class="font-medium mb-1">Important:</p>
-                                <p>This will overwrite any existing code on your ESP32. Make sure you have backups if needed.</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div class="flex items-start gap-3">
-                            <input type="checkbox" id="externalAntennaCheckbox" class="mt-1 w-4 h-4 text-blue-600 rounded">
-                            <div class="flex-1">
-                                <label for="externalAntennaCheckbox" class="text-sm font-medium text-blue-900 cursor-pointer">
-                                    I'm using an external antenna (ESP32-C6 only)
-                                </label>
-                                <p class="text-xs text-blue-700 mt-1">
-                                    Check this if your ESP32-C6 has an external antenna physically connected. Leave unchecked for internal antenna or other ESP32 models.
-                                </p>
+                                <span class="text-gray-600">Time:</span>
+                                <span class="font-semibold text-gray-900 ml-2">~30 sec</span>
                             </div>
                         </div>
                     </div>
@@ -209,18 +310,18 @@ export class HubSetupModal {
                     <div class="animate-spin">
                         <i data-lucide="loader" class="w-6 h-6 text-blue-500"></i>
                     </div>
-                    <h2 class="text-xl font-bold text-gray-800">Uploading Hub Firmware...</h2>
+                    <h2 class="text-xl font-bold text-gray-800">Uploading...</h2>
                 </div>
                 
                 <div class="mb-6">
                     <div class="flex justify-between text-sm text-gray-600 mb-2">
-                        <span>Progress: ${progress.current} / ${progress.total} files</span>
+                        <span>${progress.current} / ${progress.total} files</span>
                         <span>${percentComplete}%</span>
                     </div>
                     <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                         <div class="bg-blue-500 h-full transition-all duration-300 rounded-full" style="width: ${percentComplete}%"></div>
                     </div>
-                    <p class="text-xs text-gray-500 mt-2">Current: ${progress.currentFile || 'Preparing...'}</p>
+                    <p class="text-xs text-gray-500 mt-2">${progress.currentFile || 'Preparing...'}</p>
                 </div>
                 
                 <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 max-h-64 overflow-y-auto">
@@ -241,11 +342,11 @@ export class HubSetupModal {
                     </div>
                 </div>
                 
-                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
-                    <div class="flex items-start gap-3">
-                        <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+                    <div class="flex items-start gap-2">
+                        <i data-lucide="info" class="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5"></i>
                         <div class="text-sm text-blue-800">
-                            <p>Please keep this window open and do not disconnect your ESP32...</p>
+                            Keep this window open and don't disconnect the ESP32.
                         </div>
                     </div>
                 </div>
@@ -261,36 +362,23 @@ export class HubSetupModal {
             <div class="p-6">
                 <div class="flex items-center gap-3 mb-4">
                     <i data-lucide="check-circle" class="w-6 h-6 text-green-500"></i>
-                    <h2 class="text-xl font-bold text-gray-800">Hub Firmware Uploaded Successfully!</h2>
+                    <h2 class="text-xl font-bold text-gray-800">Upload Complete!</h2>
                 </div>
                 
                 <div class="space-y-4">
-                    <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-                        <div class="flex items-start gap-3">
-                            <i data-lucide="thumbs-up" class="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5"></i>
-                            <div class="text-sm text-green-800">
-                                <p class="font-medium mb-2">All files uploaded successfully!</p>
-                                <p>Your ESP32 is now configured as a Simple Hub.</p>
-                            </div>
+                    <div class="bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div class="text-sm text-green-800">
+                            Your ESP32 is now configured as a hub.
                         </div>
                     </div>
                     
                     <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <p class="font-medium text-gray-900 mb-3">Next steps:</p>
+                        <p class="font-medium text-gray-900 mb-3">Next:</p>
                         <ol class="list-decimal list-inside space-y-2 text-sm text-gray-700">
                             <li>Press the <strong>reset button</strong> on your ESP32</li>
-                            <li>Wait for the hub to boot up (~2 seconds)</li>
+                            <li>Wait ~2 seconds for boot up</li>
                             <li>Reconnect to start using your hub</li>
                         </ol>
-                    </div>
-                    
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div class="flex items-start gap-3">
-                            <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
-                            <div class="text-sm text-blue-800">
-                                <p>The hub will now respond to commands and communicate with playground modules via ESP-NOW.</p>
-                            </div>
-                        </div>
                     </div>
                 </div>
                 
@@ -315,21 +403,19 @@ export class HubSetupModal {
                 </div>
                 
                 <div class="space-y-4">
-                    <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-3">
                         <div class="text-sm text-red-800">
-                            <p class="font-medium mb-1">An error occurred during upload:</p>
-                            <p class="font-mono text-xs mt-2 bg-red-100 p-2 rounded">${this.errorMessage || 'Unknown error'}</p>
+                            <p class="font-mono text-xs bg-red-100 p-2 rounded">${this.errorMessage || 'Unknown error'}</p>
                         </div>
                     </div>
                     
                     <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <p class="font-medium text-gray-900 mb-2">Common solutions:</p>
+                        <p class="font-medium text-gray-900 mb-2">Try:</p>
                         <ul class="list-disc list-inside space-y-1 text-sm text-gray-700">
-                            <li>Check USB cable connection</li>
-                            <li>Make sure ESP32 is powered on</li>
-                            <li>Try pressing the reset button on your ESP32</li>
-                            <li>Close other applications using the serial port (Thonny, Arduino IDE)</li>
-                            <li>Try disconnecting and reconnecting</li>
+                            <li>Check USB cable</li>
+                            <li>Press reset button on ESP32</li>
+                            <li>Close other apps (Thonny, Arduino IDE)</li>
+                            <li>Reconnect the device</li>
                         </ul>
                     </div>
                 </div>
@@ -340,7 +426,7 @@ export class HubSetupModal {
                     </button>
                     <button id="retry-btn" class="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2">
                         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                        <span>Retry Upload</span>
+                        <span>Retry</span>
                     </button>
                 </div>
             </div>
@@ -373,9 +459,11 @@ export class HubSetupModal {
         }
 
         if (retryBtn) {
-            retryBtn.onclick = () => {
-                this.state = 'initial';
+            retryBtn.onclick = async () => {
+                // Go back to connecting state and try again
+                this.state = 'connecting';
                 this.render();
+                await this.connectAndGetDeviceInfo();
             };
         }
 

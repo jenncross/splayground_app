@@ -79,7 +79,10 @@ export function createWelcomeState(onConnect, onSetupHub, pythonReady = false) {
     
     const setupBtn = container.querySelector('#welcomeSetupBtn');
     if (setupBtn && onSetupHub && pythonReady) {
-        setupBtn.onclick = onSetupHub;
+        setupBtn.onclick = () => {
+            // Just call the setup handler - modal will handle connection
+            onSetupHub();
+        };
     }
     
     return container;
