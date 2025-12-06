@@ -111,18 +111,24 @@ class WebSerial:
         # Start loop and store stop function
         self.read_loop_stop = self.adapter.startReadLoop(on_data, on_error)
     
-    def _stop_json_read_loop(self):
-        """Stop the JSON read loop"""
+    async def _stop_json_read_loop(self):
+        """Stop the JSON read loop and wait for cleanup to complete"""
         if self.read_loop_stop:
+            print("🛑 Stopping JSON read loop...")
             self.read_loop_stop()
             self.read_loop_stop = None
-            print("Stopped JSON read loop")
+            
+            # Wait for async cleanup to complete (reader.cancel() is async)
+            # This prevents operations from starting before reader is fully released
+            await asyncio.sleep(0.5)
+            
+            print("✅ JSON read loop stopped and cleaned up")
     
     async def disconnect(self):
         """Disconnect from serial port"""
         try:
             # Stop read loop
-            self._stop_json_read_loop()
+            await self._stop_json_read_loop()
             
             # Disconnect via JS adapter
             await self.adapter.disconnect()
@@ -167,58 +173,77 @@ class WebSerial:
     
     async def send_raw(self, data):
         """Send raw bytes without adding newline (for REPL commands)"""
+        # Debug logging
+        printable = data.replace('\x03', '<CTRL-C>').replace('\x04', '<CTRL-D>').replace('\x01', '<CTRL-A>').replace('\x02', '<CTRL-B>')
+        print(f"📤 Sending: {repr(printable)}")
         await self.adapter.write(data)
     
     async def read_raw(self, timeout_ms=2000):
         """Read raw data with timeout (delegates to JS adapter)"""
-        return await self.adapter.read(timeout_ms)
+        result = await self.adapter.read(timeout_ms)
+        if result:
+            # Debug logging
+            printable = result.replace('\x03', '<CTRL-C>').replace('\x04', '<CTRL-D>').replace('\x01', '<CTRL-A>').replace('\x02', '<CTRL-B>')
+            print(f"📥 Received ({len(result)} bytes): {repr(printable[:200])}")
+        return result
     
     async def enter_repl_mode(self):
-        """Switch from JSON mode to REPL mode for firmware upload
+        """Interrupt running code and get to normal REPL (>>> prompt)
+        
+        Stops JSON read loop and sends Ctrl-C to interrupt any running code
+        (typically main.py), which brings up the normal REPL prompt (>>>).
+        
+        Does NOT enter raw REPL mode - that's enter_raw_repl_mode().
         
         REPL Control Commands:
-        - Ctrl-C (\x03): Cancel input or interrupt running code
-        - Ctrl-A (\x01): Enter raw REPL mode (permanent paste mode)
-        - Ctrl-B (\x02): Exit to normal REPL mode
+        - Ctrl-C (\x03): Cancel input or interrupt running code → normal REPL (>>>)
+        - Ctrl-A (\x01): Enter raw REPL mode (permanent paste mode) → raw REPL (>)
+        - Ctrl-B (\x02): Exit raw REPL mode → normal REPL (>>>)
         - Ctrl-D (\x04): Soft reset on blank line
-        
-        Business logic: Orchestrates the REPL entry sequence
         """
-        print("Entering REPL mode...")
+        print("🔄 Entering normal REPL mode...")
         
-        # Stop JSON read loop
-        self._stop_json_read_loop()
+        # Stop JSON read loop (waits for cleanup to complete)
+        await self._stop_json_read_loop()
         
-        # Give it a moment to fully stop
-        await asyncio.sleep(0.2)
-        
-        # More aggressive interrupt sequence (matching serialUploader.js)
-        # Send multiple CTRL-C to interrupt any running code
-        print("Interrupting any running code...")
+        # Send multiple CTRL-C to interrupt any running code (main.py)
+        print("🛑 Interrupting running code with Ctrl-C...")
         for i in range(3):
-            await self.send_raw('\x03')
-            await asyncio.sleep(0.05)  # 50ms delay between attempts
+            await self.send_raw('\x03')  # Ctrl-C
+            await asyncio.sleep(0.05)
         
         # Wait for interruption to take effect
         await asyncio.sleep(0.2)
         
         # Drain any existing output
-        print("Draining buffer...")
+        print("🧹 Draining buffer...")
         for i in range(5):
             chunk = await self.read_raw(200)
             if chunk:
                 print(f"Drained: {chunk[:100]}")
         
+        print("✅ Should now be at normal REPL (>>> prompt)")
+    
+    async def enter_raw_repl_mode(self):
+        """Enter raw REPL mode from normal REPL
+        
+        Sends Ctrl-A to enter raw REPL mode (> prompt).
+        Assumes we're already at normal REPL (>>> prompt).
+        
+        Raw REPL is like permanent paste mode - no echo, used for uploading files.
+        """
+        print("🔄 Entering raw REPL mode...")
+        
         # Send CTRL-A to enter raw REPL mode
-        print("Sending CTRL-A to enter raw REPL...")
-        await self.send_raw('\x01')
-        await asyncio.sleep(0.3)  # 300ms delay
+        print("📤 Sending Ctrl-A to enter raw REPL...")
+        await self.send_raw('\x01')  # Ctrl-A
+        await asyncio.sleep(0.3)
         
         # Wait for "raw REPL; CTRL-B to exit" prompt
         result = await self.adapter.readUntil('raw REPL', 5000)
         
         if result.found:
-            print("✓ Entered raw REPL mode")
+            print("✅ Entered raw REPL mode (> prompt)")
             # Drain any remaining welcome text
             for i in range(5):
                 await self.read_raw(200)
@@ -305,51 +330,100 @@ class WebSerial:
     # File Operations (Business Logic - stays in Python)
     # ============================================================================
     
-    async def get_board_info(self, timeout_ms=3000):
-        """Get MicroPython version and board info
+    async def get_board_info(self, timeout_ms=5000):
+        """Get MicroPython version and board info using PASTE MODE
         
-        Sends Ctrl-D from normal REPL to trigger soft reset,
-        which displays board information.
+        Uses paste mode (Ctrl-E) to execute Python code that prints os.uname().version.
+        This returns the full version string including board type (e.g., ESP32C6).
+        More reliable than parsing boot messages from soft reset.
+        
+        Approach based on micro-repl's proven implementation.
         
         Business logic: Parse and extract board information
         """
-        print("Getting board info...")
+        print("🔍 Getting board info via paste mode...")
         start_time = window.Date.now()
         
         try:
-            # Send Ctrl-D to trigger soft reset and show version
-            await self.send_raw('\x04')
+            # Step 1: Reset to clean state
+            print("🔍 Step 1: Resetting to clean state...")
+            await self.send_raw('\x02')  # Ctrl-B (exit raw REPL if in it)
+            await asyncio.sleep(0.2)
+            await self.send_raw('\x03\x03')  # Double Ctrl-C (interrupt any running code)
             await asyncio.sleep(0.5)
             
-            # Read the output (version info)
-            info = ''
-            for i in range(8):
+            # Step 2: Drain buffer to clear any pending output
+            print("🔍 Step 2: Draining buffer...")
+            for i in range(5):
+                chunk = await self.read_raw(200)
+                if chunk:
+                    print(f"   Drained: {repr(chunk[:60])}")
+            
+            # Step 3: Enter paste mode (Ctrl-E)
+            print("🔍 Step 3: Entering paste mode (Ctrl-E)...")
+            await self.send_raw('\x05')  # Ctrl-E
+            await asyncio.sleep(0.3)
+            
+            # Step 4: Send Python code to get version and machine info
+            print("🔍 Step 4: Sending Python code to get version...")
+            code = """import os
+u = os.uname()
+print(f"MicroPython {u.version}; {u.machine}")
+"""
+            await self.send_raw(code)
+            
+            # Step 5: Execute the code (Ctrl-D in paste mode)
+            print("🔍 Step 5: Executing code (Ctrl-D)...")
+            await self.send_raw('\x04')  # Ctrl-D
+            await asyncio.sleep(0.8)
+            
+            # Step 6: Collect response
+            response = ''
+            print("🔍 Step 6: Collecting response...")
+            for i in range(15):
                 if (window.Date.now() - start_time) > timeout_ms:
+                    print(f"❌ Timeout after {timeout_ms}ms. Received so far: {repr(response[:200])}")
                     raise Exception(f"Timeout waiting for board info ({timeout_ms}ms)")
                 
                 chunk = await self.read_raw(500)
-                info += chunk
+                if chunk:
+                    print(f"   Got chunk ({len(chunk)} bytes): {repr(chunk[:80])}")
+                    response += chunk
                 
-                # Stop early if we found MicroPython
-                if 'MicroPython' in info:
+                # Stop if we found MicroPython version
+                if 'MicroPython' in response:
+                    print(f"✅ Found MicroPython version string!")
+                    break
+                
+                # Stop if no more data
+                if not chunk:
                     break
             
-            # Parse version and board from output
-            if 'MicroPython' in info:
-                lines = info.split('\n')
+            # Step 7: Parse version from response
+            print("🔍 Step 7: Parsing version from response...")
+            if 'MicroPython' in response:
+                lines = response.split('\n')
                 for line in lines:
-                    if 'MicroPython' in line:
-                        board_info = line.strip()
-                        print(f"Board: {board_info}")
+                    # Look for the actual output line (not echoed code)
+                    # Valid lines start with "MicroPython " followed by version or git hash
+                    # Skip lines that are paste mode echo (contain "===", "print(", etc.)
+                    stripped = line.strip()
+                    if (stripped.startswith('MicroPython ') and 
+                        'on' in line and
+                        '===' not in line and
+                        'print(' not in line and
+                        '{' not in line):  # Skip f-string template
+                        board_info = stripped
+                        print(f"✅ Board detected: {board_info}")
                         return board_info
             
-            # Didn't find MicroPython in output
-            if info:
-                raise Exception(f"Unexpected board response: {info[:100]}")
-            else:
-                raise Exception("No response from board")
+            # Didn't find MicroPython version in output
+            print(f"❌ No MicroPython version found in response")
+            print(f"   Full response: {repr(response[:300])}")
+            raise Exception(f"MicroPython version not found in response")
                 
         except Exception as e:
+            print(f"❌ get_board_info failed: {str(e)}")
             raise Exception(f"Failed to get board info: {str(e)}")
     
     async def ensure_directory(self, dir_path):

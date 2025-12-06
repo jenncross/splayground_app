@@ -109,9 +109,13 @@ export const SerialAdapter = {
    */
   async getReader() {
     if (!this.port || !this.port.readable) {
+      console.error('❌ [SerialAdapter] getReader() failed: Port not available or not readable');
+      console.log('  Port exists:', !!this.port);
+      console.log('  Port readable:', this.port ? !!this.port.readable : 'N/A');
       throw new Error('Port not available or not open');
     }
 
+    console.log('🔒 [SerialAdapter] Acquiring reader lock');
     this.reader = this.port.readable.getReader();
     return this.reader;
   },
@@ -123,9 +127,11 @@ export const SerialAdapter = {
   async releaseReader() {
     if (this.reader) {
       try {
+        console.log('🔓 [SerialAdapter] Releasing reader lock');
         await this.reader.cancel();
         this.reader.releaseLock();
       } catch (error) {
+        console.warn('⚠️ [SerialAdapter] Error releasing reader:', error);
         // Ignore errors - may already be released
       }
       this.reader = null;
@@ -167,6 +173,7 @@ export const SerialAdapter = {
    */
   async write(data) {
     if (!this.isConnected()) {
+      console.error('❌ [SerialAdapter] write() failed: Not connected');
       throw new Error('Not connected to serial port');
     }
 
@@ -177,6 +184,18 @@ export const SerialAdapter = {
       const bytes = typeof data === 'string' 
         ? new TextEncoder().encode(data)
         : data;
+
+      // Debug logging
+      if (typeof data === 'string') {
+        const printable = data
+          .replace(/\x03/g, '<CTRL-C>')
+          .replace(/\x04/g, '<CTRL-D>')
+          .replace(/\x01/g, '<CTRL-A>')
+          .replace(/\x02/g, '<CTRL-B>');
+        console.log(`📤 [SerialAdapter] Writing ${bytes.length} bytes:`, printable.substring(0, 100));
+      } else {
+        console.log(`📤 [SerialAdapter] Writing ${bytes.length} bytes (binary)`);
+      }
 
       await writer.write(bytes);
       
@@ -192,6 +211,7 @@ export const SerialAdapter = {
    */
   async read(timeoutMs = 2000) {
     if (!this.isConnected()) {
+      console.error('❌ [SerialAdapter] read() failed: Not connected');
       throw new Error('Not connected to serial port');
     }
 
@@ -208,17 +228,24 @@ export const SerialAdapter = {
 
       // Check if stream is done
       if (result.done) {
+        console.log('⚠️ [SerialAdapter] Stream done (closed)');
         return '';
       }
 
       // Decode and return
-      return new TextDecoder().decode(result.value);
+      const text = new TextDecoder().decode(result.value);
+      if (text) {
+        console.log(`📥 [SerialAdapter] Read ${text.length} bytes:`, text.substring(0, 100));
+      }
+      return text;
 
     } catch (error) {
       // Timeout is expected, return empty string
       if (error.message === 'timeout') {
+        console.log(`⏱️ [SerialAdapter] Read timeout after ${timeoutMs}ms`);
         return '';
       }
+      console.error('❌ [SerialAdapter] Read error:', error);
       throw error;
 
     } finally {
@@ -274,16 +301,18 @@ export const SerialAdapter = {
       try {
         // Get fresh reader for this loop
         if (!this.port || !this.port.readable) {
+          console.error('❌ [SerialAdapter] startReadLoop: Port not available');
           throw new Error('Port not available');
         }
 
+        console.log('🔁 [SerialAdapter] Starting read loop');
         currentReader = this.port.readable.getReader();
 
         while (running) {
           const { value, done } = await currentReader.read();
 
           if (done) {
-            console.log('Serial stream closed');
+            console.log('🛑 [SerialAdapter] Serial stream closed');
             break;
           }
 
@@ -294,6 +323,7 @@ export const SerialAdapter = {
         }
 
       } catch (error) {
+        console.error('❌ [SerialAdapter] Read loop error:', error);
         if (running && onError) {
           onError(error);
         }
@@ -301,9 +331,11 @@ export const SerialAdapter = {
         // Clean up reader
         if (currentReader) {
           try {
+            console.log('🧹 [SerialAdapter] Cleaning up read loop reader');
             await currentReader.cancel();
             currentReader.releaseLock();
           } catch (e) {
+            console.warn('⚠️ [SerialAdapter] Cleanup error:', e);
             // Ignore cleanup errors
           }
         }
@@ -315,6 +347,7 @@ export const SerialAdapter = {
 
     // Return stop function
     return () => {
+      console.log('⏹️ [SerialAdapter] Stopping read loop');
       running = false;
       if (currentReader) {
         currentReader.cancel().catch(() => {});

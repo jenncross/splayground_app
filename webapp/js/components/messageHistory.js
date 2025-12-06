@@ -28,8 +28,7 @@ export function createMessageHistory(messages, onMessageClick, hubConnected = fa
       
       console.log('Opening Hub Setup modal...');
       
-      // Create and show the modal
-      // Python will handle serial port connection
+      // Create and show modal in loading state
       const modal = new HubSetupModal();
       await modal.show();
       

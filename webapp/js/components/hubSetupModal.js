@@ -2,10 +2,11 @@
  * Hub Setup Modal Component
  * 
  * Modal overlay for uploading hub firmware to ESP32 via serial.
- * Handles the entire upload process with progress tracking.
+ * Queries device info, shows confirmation, then uploads with progress tracking.
  * 
  * States:
- * - initial: Confirmation screen
+ * - loading: Connecting and querying device information
+ * - initial: Confirmation screen with device info
  * - uploading: Progress bar and file list
  * - success: Success message with next steps
  * - error: Error message with retry option
@@ -17,8 +18,10 @@ import { PyBridge } from '../utils/pyBridge.js';
 export class HubSetupModal {
     constructor() {
         this.modal = null;
-        this.state = 'initial'; // initial, uploading, success, error
+        this.state = 'loading'; // loading, initial, uploading, success, error
         this.hasExternalAntenna = false; // Track antenna configuration
+        this.deviceInfo = null; // Device information from query
+        this.deviceType = null; // Parsed device type (e.g., 'C6', 'C3', 'S3')
         this.uploadProgress = {
             current: 0,
             total: 0,
@@ -28,7 +31,7 @@ export class HubSetupModal {
     }
 
     /**
-     * Show the modal
+     * Show the modal and query device info
      */
     async show(serialPort) {
         this.serialPort = serialPort;
@@ -41,6 +44,9 @@ export class HubSetupModal {
         if (window.lucide) {
             window.lucide.createIcons();
         }
+        
+        // Query device info
+        await this.queryDeviceInfo();
     }
 
     /**
@@ -67,6 +73,89 @@ export class HubSetupModal {
     }
 
     /**
+     * Query device information via serial
+     * Uses thin JavaScript async layer with Python business logic
+     */
+    async queryDeviceInfo() {
+        try {
+            console.log('🔍 Querying device info...');
+            
+            // Check if already connected
+            const connectionStatus = await PyBridge.getConnectionStatus();
+            
+            if (!connectionStatus.connected || connectionStatus.mode !== 'serial') {
+                // Need to connect first
+                console.log('🔌 Connecting to serial port...');
+                const connectResult = await PyBridge.connectHubSerial();
+                
+                if (connectResult.status !== 'success') {
+                    throw new Error('Failed to connect: ' + (connectResult.error || 'Unknown error'));
+                }
+                
+                // Wait for connection to stabilize (JavaScript handles timing)
+                console.log('⏸️ Waiting for connection to stabilize...');
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            // Step 1: Stop JSON read loop (Python logic)
+            console.log('🛑 Stopping JSON read loop...');
+            const stopResult = await PyBridge.queryDeviceInfoForSetup();
+            
+            if (stopResult.status === 'error') {
+                throw new Error(stopResult.error || 'Failed to stop read loop');
+            }
+            
+            // Step 2: Wait for loop to fully stop (JavaScript handles timing)
+            console.log('⏸️ Waiting for read loop to stop...');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Step 3: Get board info (Python logic)
+            console.log('📡 Getting device information...');
+            const infoResult = await PyBridge.getDeviceBoardInfo();
+            
+            if (infoResult.status === 'success') {
+                this.deviceInfo = infoResult.info;
+                this.deviceType = this.parseDeviceType(infoResult.info);
+                console.log(`✅ Device detected: ${this.deviceType}`);
+                
+                // Move to initial confirmation state
+                this.state = 'initial';
+                this.render();
+            } else {
+                throw new Error(infoResult.error || 'Failed to get device info');
+            }
+            
+        } catch (error) {
+            console.error('❌ Device query error:', error);
+            this.errorMessage = error.message || 'Failed to query device information';
+            this.state = 'error';
+            this.render();
+        }
+    }
+    
+    /**
+     * Parse device type from info string
+     * Example: "MicroPython v1.22.0 on 2024-01-01; ESP32-C6 with ESP32C6"
+     */
+    parseDeviceType(info) {
+        if (!info) return null;
+        
+        const infoUpper = info.toUpperCase();
+        if (infoUpper.includes('ESP32-C6') || infoUpper.includes('ESP32C6')) {
+            return 'C6';
+        } else if (infoUpper.includes('ESP32-C3') || infoUpper.includes('ESP32C3')) {
+            return 'C3';
+        } else if (infoUpper.includes('ESP32-S3') || infoUpper.includes('ESP32S3')) {
+            return 'S3';
+        } else if (infoUpper.includes('ESP32-S2') || infoUpper.includes('ESP32S2')) {
+            return 'S2';
+        } else if (infoUpper.includes('ESP32')) {
+            return 'ESP32';
+        }
+        return 'Unknown';
+    }
+
+    /**
      * Render the modal content based on current state
      */
     render() {
@@ -74,6 +163,9 @@ export class HubSetupModal {
 
         let content = '';
         switch (this.state) {
+            case 'loading':
+                content = this.renderLoading();
+                break;
             case 'initial':
                 content = this.renderInitial();
                 break;
@@ -104,83 +196,92 @@ export class HubSetupModal {
     }
 
     /**
+     * Render loading state while querying device
+     */
+    renderLoading() {
+        return `
+            <div class="p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="animate-spin">
+                        <i data-lucide="loader" class="w-6 h-6 text-blue-500"></i>
+                    </div>
+                    <h2 class="text-xl font-bold text-gray-800">Connecting to Device...</h2>
+                </div>
+                
+                <div class="text-gray-600 text-sm">
+                    <p>Please wait while we connect and identify your ESP32 device.</p>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
      * Render initial confirmation state
      */
     renderInitial() {
+        const showAntennaOption = this.deviceType === 'C6';
+        
+        // For C3 devices, note that external antenna is always on (can't be configured)
+        const isC3 = this.deviceType === 'C3';
+        
         return `
             <div class="p-6">
                 <div class="flex items-center gap-3 mb-4">
                     <i data-lucide="upload-cloud" class="w-6 h-6 text-blue-500"></i>
-                    <h2 class="text-xl font-bold text-gray-800">Setup ESP32 as Simple Hub</h2>
+                    <h2 class="text-xl font-bold text-gray-800">Setup ESP32 as Hub</h2>
                 </div>
                 
-                <div class="space-y-4 text-gray-700">
-                    <p>
-                        This will upload hub firmware to your ESP32, transforming it into 
-                        a fully functional Simple Hub that can communicate with playground modules.
-                    </p>
-                    
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="space-y-4">
+                    ${this.deviceInfo ? `
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-4">
                         <div class="flex items-start gap-3">
-                            <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
+                                <i data-lucide="check-circle" class="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5"></i>
                             <div class="text-sm">
-                                <p class="font-medium text-blue-900 mb-1">What will be uploaded:</p>
-                                <ul class="list-disc list-inside space-y-1 text-blue-800">
-                                    <li>Hub communication firmware</li>
-                                    <li>ESP-NOW protocol support</li>
-                                    <li>Serial communication handler</li>
-                                    <li>Hardware utilities</li>
-                                </ul>
+                                    <p class="font-medium text-green-900 mb-1">Device Detected</p>
+                                    <p class="text-green-800 font-mono text-xs">${this.deviceInfo}</p>
+                                </div>
                             </div>
+                        </div>
+                    ` : ''}
+                    
+                    <div class="text-gray-700 text-sm">
+                        <p class="mb-2">Ready to upload hub firmware to your ${this.deviceType || 'ESP32'} device.</p>
+                        <p>This takes about 30 seconds and will enable communication with playground modules.</p>
+                    </div>
+                    
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                        <div class="flex items-start gap-2">
+                            <i data-lucide="alert-triangle" class="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5"></i>
+                            <p class="text-xs text-yellow-800">
+                                This will overwrite existing code on your device.
+                            </p>
                         </div>
                     </div>
                     
-                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <div class="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <span class="text-gray-600">Files to upload:</span>
-                                <span class="font-semibold text-gray-900 ml-2">12 files</span>
-                            </div>
-                            <div>
-                                <span class="text-gray-600">Estimated time:</span>
-                                <span class="font-semibold text-gray-900 ml-2">~30 seconds</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div class="flex items-start gap-3">
-                            <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
-                            <div class="text-sm text-blue-800">
-                                <p class="font-medium mb-1">Upload Process:</p>
-                                <p>The upload will automatically interrupt any running code and enter firmware upload mode. Just click Start Upload below.</p>
+                    ${showAntennaOption ? `
+                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                            <div class="flex items-start gap-2">
+                                <input type="checkbox" id="externalAntennaCheckbox" class="mt-0.5 w-4 h-4 text-blue-600 rounded">
+                                <div class="flex-1">
+                                    <label for="externalAntennaCheckbox" class="text-sm font-medium text-blue-900 cursor-pointer">
+                                        Use external antenna
+                                    </label>
+                                    <p class="text-xs text-blue-700 mt-0.5">
+                                        Check if your C6 has an external antenna connected.
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    ` : ''}
                     
-                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                        <div class="flex items-start gap-3">
-                            <i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5"></i>
-                            <div class="text-sm text-yellow-800">
-                                <p class="font-medium mb-1">Important:</p>
-                                <p>This will overwrite any existing code on your ESP32. Make sure you have backups if needed.</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div class="flex items-start gap-3">
-                            <input type="checkbox" id="externalAntennaCheckbox" class="mt-1 w-4 h-4 text-blue-600 rounded">
-                            <div class="flex-1">
-                                <label for="externalAntennaCheckbox" class="text-sm font-medium text-blue-900 cursor-pointer">
-                                    I'm using an external antenna (ESP32-C6 only)
-                                </label>
-                                <p class="text-xs text-blue-700 mt-1">
-                                    Check this if your ESP32-C6 has an external antenna physically connected. Leave unchecked for internal antenna or other ESP32 models.
+                    ${isC3 ? `
+                        <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                            <p class="text-xs text-gray-600">
+                                <i data-lucide="info" class="w-3 h-3 inline mr-1"></i>
+                                C3 devices use external antenna by default (not configurable).
                                 </p>
-                            </div>
                         </div>
-                    </div>
+                    ` : ''}
                 </div>
                 
                 <div class="flex gap-3 mt-6">
@@ -364,18 +465,30 @@ export class HubSetupModal {
         if (startBtn) {
             startBtn.onclick = () => {
                 // Capture antenna checkbox state before starting upload
-                if (antennaCheckbox) {
+                // C3 devices: antenna flag causes crashes, so always set to false
+                // C6 devices: use checkbox value
+                // Other devices: default to false
+                if (this.deviceType === 'C3') {
+                    this.hasExternalAntenna = false;
+                    console.log('C3 device: external antenna disabled (causes crashes)');
+                } else if (antennaCheckbox) {
                     this.hasExternalAntenna = antennaCheckbox.checked;
                     console.log(`External antenna: ${this.hasExternalAntenna}`);
+                } else {
+                    this.hasExternalAntenna = false;
                 }
                 this.startUpload();
             };
         }
 
         if (retryBtn) {
-            retryBtn.onclick = () => {
-                this.state = 'initial';
+            retryBtn.onclick = async () => {
+                // Reset state and query device again
+                this.state = 'loading';
+                this.deviceInfo = null;
+                this.deviceType = null;
                 this.render();
+                await this.queryDeviceInfo();
             };
         }
 

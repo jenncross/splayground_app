@@ -149,6 +149,14 @@ const PyBridge = {
     return await callPython('get_board_info');
   },
 
+  async queryDeviceInfoForSetup() {
+    return await callPython('query_device_info_for_setup');
+  },
+
+  async getDeviceBoardInfo() {
+    return await callPython('get_device_board_info');
+  },
+
   async executeFileOnDevice(filePath) {
     return await callPython('execute_file_on_device', filePath);
   },

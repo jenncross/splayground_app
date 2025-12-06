@@ -830,9 +830,13 @@ async def upload_firmware(files_json):
         return js_result
     
     try:
-        # Enter REPL mode
+        # Enter normal REPL mode (interrupt running code)
         console.log("Entering REPL mode...")
         await serial.enter_repl_mode()
+        
+        # Enter raw REPL mode (needed for file upload operations)
+        console.log("Entering raw REPL mode for file upload...")
+        await serial.enter_raw_repl_mode()
         
         # Convert JS array to Python list
         files = []
@@ -927,10 +931,10 @@ async def get_board_info():
         return js_result
     
     try:
-        # Enter REPL mode (stops JSON read loop, releases locks)
+        # Enter normal REPL mode (stops JSON read loop, interrupts running code)
         await serial.enter_repl_mode()
         
-        # Get board info (this works from normal REPL prompt)
+        # Get board info from normal REPL (no need for raw REPL)
         info = await serial.get_board_info()
         
         # Exit raw REPL if we entered it, and restart JSON mode
@@ -963,6 +967,90 @@ async def get_board_info():
         js_result.error = str(e)
         return js_result
 
+async def query_device_info_for_setup():
+    """Query device info from fresh serial connection for setup workflow
+    
+    Gets device info using normal REPL (not raw REPL) from a freshly
+    connected device. Does not assume JSON mode or try to return to it.
+    Used during hub setup to detect device type before firmware upload.
+    
+    Now properly awaits async _stop_json_read_loop() for complete cleanup.
+    
+    Returns device info string like:
+    "MicroPython v1.22.0 on 2024-01-01; ESP32-C6 with ESP32C6"
+    """
+    console.log("🔍 [query_device_info_for_setup] Starting device query...")
+    
+    if not serial.is_connected():
+        console.log("❌ [query_device_info_for_setup] Serial not connected")
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = "Not connected to serial port"
+        return js_result
+    
+    console.log("✅ [query_device_info_for_setup] Serial is connected")
+    
+    try:
+        # Stop any JSON read loop if it exists (but don't fail if it doesn't)
+        console.log("🛑 [query_device_info_for_setup] Stopping JSON read loop...")
+        try:
+            await serial._stop_json_read_loop()
+            console.log("✅ [query_device_info_for_setup] JSON read loop stopped and cleaned up")
+        except Exception as e:
+            console.log(f"⚠️ [query_device_info_for_setup] No JSON read loop to stop: {e}")
+            pass
+        
+        js_result = Object.new()
+        js_result.status = "loop_stopped"
+        js_result.message = "JSON read loop stopped, ready for board info query"
+        return js_result
+        
+    except Exception as e:
+        console.error(f"❌ [query_device_info_for_setup] Failed: {e}")
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = str(e)
+        return js_result
+
+def get_device_board_info():
+    """Get board info after read loop has been stopped
+    
+    Simple synchronous call to get board info. Should be called after
+    query_device_info_for_setup() and a short delay handled by JavaScript.
+    
+    Returns device info string like:
+    "MicroPython v1.22.0 on 2024-01-01; ESP32-C6 with ESP32C6"
+    """
+    console.log("📡 [get_device_board_info] Getting board info...")
+    
+    if not serial.is_connected():
+        console.log("❌ [get_device_board_info] Serial not connected")
+        js_result = Object.new()
+        js_result.status = "error"
+        js_result.error = "Not connected to serial port"
+        return js_result
+    
+    # Return a promise-like object that JavaScript can await
+    # This allows the async serial.get_board_info() to work properly
+    async def _get_info():
+        try:
+            info = await serial.get_board_info()
+            console.log(f"✅ [get_device_board_info] Got board info: {info}")
+            
+            js_result = Object.new()
+            js_result.status = "success"
+            js_result.info = info
+            return js_result
+        except Exception as e:
+            console.error(f"❌ [get_device_board_info] Failed: {e}")
+            js_result = Object.new()
+            js_result.status = "error"
+            js_result.error = str(e)
+            return js_result
+    
+    # Return the coroutine for JavaScript to await
+    return _get_info()
+
 async def execute_file_on_device(file_path):
     """Execute a specific Python file on the connected device
     
@@ -976,8 +1064,11 @@ async def execute_file_on_device(file_path):
         return js_result
     
     try:
-        # Enter REPL mode
+        # Enter normal REPL mode (interrupt running code)
         await serial.enter_repl_mode()
+        
+        # Enter raw REPL mode (needed for file execution)
+        await serial.enter_raw_repl_mode()
         
         # Execute the file
         output = await serial.execute_file(file_path)
@@ -1025,10 +1116,10 @@ async def soft_reset_device():
         return js_result
     
     try:
-        # Enter REPL mode
+        # Enter normal REPL mode (interrupt running code)
         await serial.enter_repl_mode()
         
-        # Perform soft reset
+        # Perform soft reset (Ctrl-D from normal REPL)
         await serial.soft_reset()
         
         # Device is now at normal REPL prompt (>>>)
@@ -1060,8 +1151,11 @@ async def hard_reset_device():
         return js_result
     
     try:
-        # Enter REPL mode
+        # Enter normal REPL mode (interrupt running code)
         await serial.enter_repl_mode()
+        
+        # Enter raw REPL mode (needed to execute machine.reset())
+        await serial.enter_raw_repl_mode()
         
         # Perform hard reset (device will reboot)
         await serial.hard_reset()
@@ -1111,6 +1205,8 @@ window.refresh_devices_from_hub = create_proxy(refresh_devices_from_hub)
 # Firmware upload and device management functions
 window.upload_firmware = create_proxy(upload_firmware)
 window.get_board_info = create_proxy(get_board_info)
+window.query_device_info_for_setup = create_proxy(query_device_info_for_setup)
+window.get_device_board_info = create_proxy(get_device_board_info)
 window.execute_file_on_device = create_proxy(execute_file_on_device)
 window.soft_reset_device = create_proxy(soft_reset_device)
 window.hard_reset_device = create_proxy(hard_reset_device)
