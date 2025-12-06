@@ -830,9 +830,9 @@ async def upload_firmware(files_json):
         return js_result
     
     try:
-        # Enter REPL mode
-        console.log("Entering REPL mode...")
-        await serial.enter_repl_mode()
+        # Enter RAW REPL mode for file upload
+        console.log("Entering RAW REPL mode...")
+        await serial.enter_raw_repl_mode()
         
         # Convert JS array to Python list
         files = []
@@ -927,14 +927,11 @@ async def get_board_info():
         return js_result
     
     try:
-        # Enter REPL mode (stops JSON read loop, releases locks)
+        # Enter normal REPL mode (stops JSON read loop, gets to >>> prompt)
         await serial.enter_repl_mode()
         
         # Get board info (this works from normal REPL prompt)
         info = await serial.get_board_info()
-        
-        # Exit raw REPL if we entered it, and restart JSON mode
-        await serial.exit_raw_repl_mode()
         
         # Restart JSON read loop to return to normal operation
         await serial.release_reader_writer()
@@ -951,7 +948,6 @@ async def get_board_info():
         
         # Try to recover to JSON mode
         try:
-            await serial.exit_raw_repl_mode()
             await serial.release_reader_writer()
             await serial.acquire_reader_writer()
             serial.read_loop_task = asyncio.create_task(serial._read_loop())
@@ -976,8 +972,8 @@ async def execute_file_on_device(file_path):
         return js_result
     
     try:
-        # Enter REPL mode
-        await serial.enter_repl_mode()
+        # Enter RAW REPL mode for code execution
+        await serial.enter_raw_repl_mode()
         
         # Execute the file
         output = await serial.execute_file(file_path)

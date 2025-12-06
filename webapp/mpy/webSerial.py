@@ -173,26 +173,15 @@ class WebSerial:
         """Read raw data with timeout (delegates to JS adapter)"""
         return await self.adapter.read(timeout_ms)
     
-    async def enter_repl_mode(self):
-        """Switch from JSON mode to REPL mode for firmware upload
+    async def interrupt_and_drain(self):
+        """Interrupt any running code and drain buffer
+        
+        Sends Ctrl-C to interrupt running code and clears buffer.
+        Use this before entering REPL mode or sending commands.
         
         REPL Control Commands:
         - Ctrl-C (\x03): Cancel input or interrupt running code
-        - Ctrl-A (\x01): Enter raw REPL mode (permanent paste mode)
-        - Ctrl-B (\x02): Exit to normal REPL mode
-        - Ctrl-D (\x04): Soft reset on blank line
-        
-        Business logic: Orchestrates the REPL entry sequence
         """
-        print("Entering REPL mode...")
-        
-        # Stop JSON read loop
-        self._stop_json_read_loop()
-        
-        # Give it a moment to fully stop
-        await asyncio.sleep(0.2)
-        
-        # More aggressive interrupt sequence (matching serialUploader.js)
         # Send multiple CTRL-C to interrupt any running code
         print("Interrupting any running code...")
         for i in range(3):
@@ -208,6 +197,54 @@ class WebSerial:
             chunk = await self.read_raw(200)
             if chunk:
                 print(f"Drained: {chunk[:100]}")
+    
+    async def enter_repl_mode(self):
+        """Switch from JSON mode to normal REPL mode (>>> prompt)
+        
+        This is for operations that need normal REPL only, like getting board info.
+        Does NOT enter raw REPL mode.
+        
+        REPL Control Commands:
+        - Ctrl-C (\x03): Cancel input or interrupt running code
+        - Ctrl-D (\x04): Soft reset on blank line (shows board info)
+        
+        Business logic: Orchestrates getting to normal REPL prompt
+        """
+        print("Entering normal REPL mode...")
+        
+        # Stop JSON read loop
+        self._stop_json_read_loop()
+        
+        # Give it a moment to fully stop
+        await asyncio.sleep(0.2)
+        
+        # Interrupt running code and drain buffer
+        await self.interrupt_and_drain()
+        
+        # We're now at normal REPL prompt (>>>)
+        print("✓ At normal REPL prompt (>>>)")
+    
+    async def enter_raw_repl_mode(self):
+        """Switch from JSON mode to RAW REPL mode for firmware upload
+        
+        REPL Control Commands:
+        - Ctrl-C (\x03): Cancel input or interrupt running code
+        - Ctrl-A (\x01): Enter raw REPL mode (permanent paste mode)
+        - Ctrl-B (\x02): Exit to normal REPL mode
+        - Ctrl-D (\x04): Soft reset on blank line
+        
+        Business logic: Orchestrates the REPL entry sequence
+        """
+        print("Entering RAW REPL mode...")
+        
+        # Stop JSON read loop
+        self._stop_json_read_loop()
+        
+        # Give it a moment to fully stop
+        await asyncio.sleep(0.2)
+        
+        # Interrupt running code and drain buffer
+        await self.interrupt_and_drain()
         
         # Send CTRL-A to enter raw REPL mode
         print("Sending CTRL-A to enter raw REPL...")
@@ -306,10 +343,10 @@ class WebSerial:
     # ============================================================================
     
     async def get_board_info(self, timeout_ms=3000):
-        """Get MicroPython version and board info
+        """Get MicroPython version and board info from normal REPL
         
-        Sends Ctrl-D from normal REPL to trigger soft reset,
-        which displays board information.
+        Must be called when at normal REPL (>>> prompt), NOT in raw REPL mode.
+        Sends Ctrl-D to trigger soft reset, which displays board information.
         
         Business logic: Parse and extract board information
         """
